@@ -2,34 +2,32 @@
 
 A progressive web app (PWA): one codebase that runs in any browser and installs on iPhone, Android, Mac and Windows.
 
-## One-time Supabase setup
+## Deploy (Netlify)
+Needs HTTPS to install on phones. Drag this folder's contents (or the zip) onto Netlify's deploy area (Netlify Drop); GitHub Pages or Cloudflare Pages also work. Then open the link on each device:
+- iPhone: Safari › Share › Add to Home Screen
+- Android: Chrome › menu › Install app
+- Mac / Windows: Chrome or Edge › install icon in the address bar
 
-1. **Create the tables.** Supabase dashboard > SQL Editor > New query. Paste all of `supabase/schema.sql` and press Run.
-2. **Add campaigns.** Same place: New query, paste all of `supabase/campaigns.sql` and press Run. (Run it after `schema.sql`. Safe to run again. If you ever re-run `schema.sql`, run `campaigns.sql` again after it.)
-3. **Username login.** Same place: paste all of `supabase/username-login.sql` and press Run.
-4. **Turn off email confirmation** (so sign-up works without sending emails). Dashboard > Authentication > Sign In / Providers > Email > switch off "Confirm email" > Save.
-5. **Password recovery (Forgot password on the log in page).** Dashboard > Authentication > URL Configuration: set **Site URL** to your app's address (for example `https://verdant-stardust-605101.netlify.app`) and add the same address, with `/` or `/index.html` on the end if you like, under **Redirect URLs**. Without this the email link will not bring players back to the app. Supabase's built-in email sender is limited to a few emails an hour; for heavier use add your own SMTP under Authentication > Emails > SMTP Settings.
-6. `config.js` already holds your project URL and publishable key. Both are public by design. Never put a `service_role` or `secret` key in this app.
+## Supabase setup (one time)
+1. Create a free project at supabase.com.
+2. SQL Editor › New query: paste all of `supabase/schema.sql` and press Run.
+3. Same place: New query, paste all of `supabase/campaigns.sql` and press Run. (Run it after `schema.sql`. Safe to run again. If you ever re-run `schema.sql`, run `campaigns.sql` again after it.)
+4. Same place: paste all of `supabase/username-login.sql` and press Run. (It lets players log in with a username instead of an email.)
+5. Authentication › URL Configuration: set Site URL to your app's address (for example `https://verdant-stardust-605101.netlify.app`) and add the same address, with `/` or `/index.html` on the end if you like, under Redirect URLs. Without this the Forgot password email link will not bring players back to the app.
+6. Authentication › Sign In / Providers › Email: turn off "Confirm email" and Save, so sign-up works without sending emails. Supabase's built-in email service only sends a few emails per hour; for more, add your own SMTP under Authentication › Emails › SMTP Settings.
+7. `config.js` already holds your project URL and the publishable key. If the project ever changes, copy the new ones from Project Settings › API Keys (or API) into `config.js` before deploying.
 
-## Put it online (needs HTTPS to install on phones)
+Only the publishable key may go in `config.js` (it is public by design). Never use the secret or service_role key in the app.
 
-Upload this whole folder to a static host such as Netlify Drop, GitHub Pages or Cloudflare Pages.
-Then open the link on each device:
-- iPhone: Safari > Share > Add to Home Screen
-- Android: Chrome > menu > Install app
-- Mac / Windows: Chrome or Edge > install icon in the address bar
+Free Supabase projects can be paused after a stretch of no use; restore the project from the Supabase dashboard if that happens.
+
+The Supabase JavaScript library (MIT license) is included in `vendor/` so the app works offline.
+
+## Updating
+Version: 0.6 (`APP_VERSION` in `app.js`; it changes only when Ricky says so). Cache: `bloodsoup-v56` (`CACHE` in `sw.js`). Bump the cache on every release, or installed copies may keep showing the old files.
 
 ## Files
-
-- `index.html`, `app.js`: screens and behavior
-- `engine.js`: the character sheet math (a direct port of BSH_Skillsheet_3.2)
-- `backend.js`: accounts and saving (Supabase, with a device-only fallback when Supabase is not configured)
-- `config.js`: Supabase URL + publishable key
-- `vendor/supabase.js`: the Supabase browser library (MIT license, see `vendor/supabase-LICENSE.txt`)
-- `supabase/schema.sql`: accounts and character tables and security rules
-- `supabase/username-login.sql`: lets players log in with a username instead of an email
-- `supabase/campaigns.sql`: campaigns, QM rules, linking characters to campaigns, NPCs, and encounters with initiative rolls (creator is QM, a campaign always keeps a QM: if the last QM leaves or their account is deleted a random player takes over and inherits the NPCs, only QMs remove players, change QMs, delete the campaign, create NPCs or show/hide them)
-- `sw.js`, `manifest.webmanifest`, icons: offline use and installing
+See `ARCHITECTURE.md` for what each file does.
 
 ## Items
 
