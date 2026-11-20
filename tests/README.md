@@ -1,0 +1,24 @@
+# Tests
+
+Plain Node scripts, no test framework. Each prints `PASS`/`FAIL` lines and a final `ALL n PASSED`.
+
+## Setup
+```
+cd tests && npm install      # jsdom and @electric-sql/pglite
+```
+
+## Run
+- Everything (except the two slow files): `node run-all.js`. Add `--slow` to include them.
+- One file: `node roster.js | grep -E "FAIL|^ALL"` (use `timeout 115` if your shell limits commands to ~2 minutes).
+
+## How they work
+- `h.js`: a jsdom harness that boots the real `index.html` and `app.js` against either the local backend or a mock Supabase. Helpers: `boot`, `api`, `checker`, `wait`, `waitFor`.
+- `mock.js`: a mock Supabase (REST + RPC) that mirrors `supabase/campaigns.sql` behaviour. **When an RPC changes in `campaigns.sql`, update `mock.js` and the local backend in `backend.js` to match.**
+- `sql.mjs`: runs `supabase/schema.sql` and `supabase/campaigns.sql` (twice, to prove idempotence) in PGlite and exercises the RPCs and RLS as different users.
+- Most UI tests run each scenario twice: local backend, then Supabase mock. Fixtures for the import tests are in `fixtures/`.
+
+## Notes
+- `gifts.js` and `spawn.js` take about 100 s each and can time out.
+- `et2.js` uses real dice and is occasionally flaky. Rerun before assuming a regression.
+- Last full run from this folder (2026-11-20): every file passed (sql 355, combat2 94, roster 116, campaigns 266, enc 114, and the rest). The only slow-to-pass issue seen was combat2 racing the 5 s poll once; fixed by refreshing devices after changing AP.
+- Areas: `combat2.js` crits and Combo Attacks, `wa.js` weapon attacks and defending, `npcmgr.js` / `mknpc.js` NPC owner features, `enc.js` / `turns.js` encounters, `combo.js` the combo engine alone.

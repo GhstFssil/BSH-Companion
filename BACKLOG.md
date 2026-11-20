@@ -11,5 +11,4 @@ Planned or possible additions, roughly by priority. Move finished items into `HA
 - Fill in the blank ability descriptions for Gary's Meat Matron and Spell Duelist.
 - A button on the Characters page to create an NPC from scratch.
 - Automate Tracking's "next hit is critical" combo bonus (currently text only).
-- Rebuild a test harness in this repo (jsdom plus mock Supabase plus PGlite) so tests travel with the code.
 - Consider deploying to Netlify from this repo, if Ricky wants Git-based deploys (mind the free build credits).

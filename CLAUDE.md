@@ -25,4 +25,6 @@ Companion PWA for Ricky's homemade tabletop RPG, BLOODSOUP HELL. Read `HANDOFF.m
 - Combo Attacks (3 AP): Leader picks Finisher + skill, rolls d20; Combo Level 0/10/15/20/25; held until the Leader's next turn begins; Finisher ticks it on a weapon attack; Leader rolls an attack; target defends against both. Engine: `BSH.COMBAT`, `BSH.COMBO`.
 
 ## Testing
-The previous sessions used a jsdom harness, a mock Supabase, and PGlite SQL tests kept outside the repo, so they may need rebuilding. Before shipping, exercise both backends (local and Supabase), run `supabase/campaigns.sql` twice against a scratch Postgres to confirm it is idempotent, and click through the changed flows.
+Tests live in `tests/` (see `tests/README.md`). Setup: `cd tests && npm install`. Run all: `node run-all.js`.
+- Before shipping, run the suite and click through the changed flows. A database change means updating **three** things together: `supabase/campaigns.sql`, the Supabase branch of `backend.js` (and its local-backend twin), and `tests/mock.js`. Add a case to `tests/sql.mjs`.
+- `tools/build_artifact.py [out.html]` builds the single-file demo page that Ricky previews as a Claude artifact (https://claude.ai/artifact/2qcasGSVxcbuwHbWt1gqGA). Republishing it is free. It is optional.

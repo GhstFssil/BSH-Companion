@@ -2,9 +2,12 @@
 
 Newest entry first. Add a new dated section at the top at the end of each session.
 
-## 2026-11-20: repo created
-- App pushed to GitHub (`GhstFssil/BSH-Companion`, branch `main`) as the first commit, from the 0.6 build.
-- Added `CLAUDE.md` (project instructions), this file, and `BACKLOG.md`.
+## 2026-11-20: repo created, tests moved in
+- App pushed to GitHub (`GhstFssil/BSH-Companion`, branch `main`) from the 0.6 build.
+- The test suite now lives in `tests/` (jsdom harness, mock Supabase, PGlite SQL tests, import fixtures); `tools/build_artifact.py` builds the demo-page preview. See `tests/README.md`. Run `cd tests && npm install && node run-all.js`.
+- Added `CLAUDE.md`, this file, and `BACKLOG.md`.
+- To start the next session: read this file and `BACKLOG.md`. Ask Ricky whether `campaigns.sql` was run and 0.6 rev2 is live, and about any bugs from real play.
+- Nothing is mid-flight. No uncommitted work and no unreleased changes. Last shipped build is 0.6 (cache `bloodsoup-v56`), identical to what is on `main`.
 
 ## 2026-11-17: version 0.6 released
 - Shipped as "BSH 0.6 rev2.zip", cache `bloodsoup-v56`, version 0.6, with `supabase/campaigns.sql`. Ricky still had to run `campaigns.sql` in Supabase and upload the zip to Netlify. Confirm he did both if bugs get reported. Next cache is **v57**.

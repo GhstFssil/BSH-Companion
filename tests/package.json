@@ -1,0 +1,16 @@
+{
+  "name": "bsh-tests",
+  "version": "1.0.0",
+  "description": "",
+  "private": true,
+  "scripts": {
+    "test": "node run-all.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@electric-sql/pglite": "^0.5.15",
+    "jsdom": "^31.0.0"
+  }
+}

@@ -1,0 +1,80 @@
+const { boot, wait, api, checker } = require('./h.js');
+const { ok, done } = checker();
+const BSH = require('../engine.js');
+(async () => {
+  // ---- engine ----
+  const base = BSH.blankCharacter();
+  const sk0 = BSH.compute(base).skillMod[0], sk3 = BSH.compute(base).skillMod[3];
+  const mk = (buffs, eq = {}) => { const c = BSH.blankCharacter(); c.items = [Object.assign({ name: 'Ring', qty: 1, buffs }, eq)]; return c; };
+  const sk = (c, i) => BSH.compute(c).skillMod[i];
+  const tl = BSH.SKILLS[0].t;
+  ok(sk(mk([{ kind: 'skill', idx: 0, amt: 5 }]), 0) === sk0 + 5, 'a buff with neither Hold nor Wear always applies');
+  ok(sk(mk([{ kind: 'skill', idx: 0, amt: -3 }]), 0) === sk0 - 3, 'negative buffs lower the stat');
+  ok(sk(mk([{ kind: 'skill', idx: 0, amt: 5, hold: true }]), 0) === sk0, 'a Hold buff does nothing in the pack');
+  ok(sk(mk([{ kind: 'skill', idx: 0, amt: 5, hold: true }], { eqL: true }), 0) === sk0 + 5, 'a Hold buff works in the left hand');
+  ok(sk(mk([{ kind: 'skill', idx: 0, amt: 5, hold: true }], { eqR: true }), 0) === sk0 + 5, '...or the right hand');
+  ok(sk(mk([{ kind: 'skill', idx: 0, amt: 5, hold: true }], { eqB: true }), 0) === sk0, 'a Hold buff does not work on the body');
+  ok(sk(mk([{ kind: 'skill', idx: 0, amt: 5, wear: true }], { eqB: true }), 0) === sk0 + 5, 'a Wear buff works on the body');
+  ok(sk(mk([{ kind: 'skill', idx: 0, amt: 5, wear: true }], { eqL: true }), 0) === sk0, 'a Wear buff does not work in a hand');
+  ok(sk(mk([{ kind: 'skill', idx: 0, amt: 5, hold: true, wear: true }], { eqB: true }), 0) === sk0 + 5 && sk(mk([{ kind: 'skill', idx: 0, amt: 5, hold: true, wear: true }], { eqR: true }), 0) === sk0 + 5, 'Hold+Wear works either way');
+  const t = BSH.compute(mk([{ kind: 'talent', idx: tl[0], amt: 2 }]));
+  ok(t.skillMod[0] === sk0 + 2, 'a talent buff raises the skills that use that talent');
+  ok(BSH.compute(mk([{ kind: 'talent', idx: tl[0], amt: 2 }])).skillMod.some((v, i) => v !== BSH.compute(base).skillMod[i]) , 'and only those');
+  ok(sk(mk([{ kind: 'skill', idx: 0, amt: 2 }, { kind: 'skill', idx: 0, amt: 3 }]), 0) === sk0 + 5, 'buffs add up');
+  const junk = mk([{ kind: 'skill', idx: 99, amt: 5 }, { kind: 'nope', idx: 0, amt: 5 }, { kind: 'skill', idx: 0, amt: 'x' }, null]);
+  ok(sk(junk, 0) === sk0, 'malformed buffs are ignored');
+  ok(BSH.compute(base).itemBuffs.list.length === 0, 'compute reports no item buffs by default');
+
+  // ---- sheet ----
+  const w = await boot({}); const A = api(w);
+  await A.signUp();
+  const b = w.BSHBackend.create(w.BSH_CONFIG); await b.init();
+  const c = w.BSH.blankCharacter(); c.id = w.crypto.randomUUID(); c.info.name = 'Tester'; c.items = [{ name: 'Ring', qty: 1, charges: null, desc: '', wearable: true }, { name: 'Club', qty: 1, charges: null, desc: '' }];
+  await b.saveCharacter(c);
+  A.go('characters'); await wait(150); A.go('character-' + c.id); await wait(100); A.tab('items'); await wait(30);
+  const card = (n) => [...A.d.querySelectorAll('#panel-items .item')].find((x) => x.querySelector('.iline input[type=text]').value === n);
+  const open = (n) => { const x = card(n); if (x.querySelector('.idesc').hidden) A.click(x.querySelector('.chev')); return x; };
+  const btn = (root, t) => [...root.querySelectorAll('button')].find((x) => x.textContent.startsWith(t));
+  let ring = open('Ring');
+  const bc = () => card('Ring').querySelector('.ibuffs');
+  ok(bc().hidden && !!btn(ring.querySelector('.iact'), 'ITEM BUFFS'), 'ITEM BUFFS button; card starts closed');
+  A.click(btn(ring.querySelector('.iact'), 'ITEM BUFFS'));
+  ok(!bc().hidden, 'the button opens the card');
+  const groups = [...bc().querySelectorAll('optgroup')].map((g) => g.label + ':' + g.children.length);
+  ok(groups.join() === 'Talents:9,Skills:36', 'a scroll menu of all 9 talents and 36 skills: ' + groups);
+  ok(!!bc().querySelector('input[aria-label="Hold buff"]') && !!bc().querySelector('input[aria-label="Wear buff"]'), 'Hold and Wear checkboxes');
+  A.click(btn(bc(), 'ADD BUFF')); ok(/Enter a number/.test(bc().querySelector('.lbl').textContent), 'a number is required');
+  const sel = () => bc().querySelector('select'), amt = () => bc().querySelector('input.num');
+  const skillMods = () => w.BSH.compute(JSON.parse(JSON.stringify(curChar()))).skillMod;
+  const curChar = () => JSON.parse(w.localStorage.getItem('bsh.chars.' + Object.keys(JSON.parse(w.localStorage.getItem('bsh.accounts') || '{}'))[0]) || '[]').find((x) => x.id === c.id);
+  const before = (await b.listCharacters()).find((x) => x.id === c.id);
+  const sm0 = w.BSH.compute(before).skillMod;
+  A.setv(sel(), 's0'); A.setv(amt(), '4'); [...bc().querySelectorAll('input[aria-label="Wear buff"]')].pop().checked = true;
+  A.click(btn(bc(), 'ADD BUFF'));
+  ring = card('Ring');
+  ok(/ITEM BUFFS \(1\)/.test(btn(ring.querySelector('.iact'), 'ITEM BUFFS').textContent), 'the button counts the buffs');
+  ok(!bc().hidden, 'the card stays open after adding');
+  ok(/^.* \+4$/.test(bc().querySelector('.ibrow b').textContent) && bc().querySelector('.ibrow .tag').textContent === 'OFF', 'listed as +4, OFF until worn: ' + bc().querySelector('.ibrow b').textContent);
+  ok(!A.$('itemBuffLine'), 'no active item buffs line yet');
+  open('Ring'); A.click(btn(card('Ring').querySelector('.iact'), 'BODY'));
+  ok(card('Ring').querySelector('.ibrow .tag').textContent === 'ACTIVE' && /Item buffs: .* \+4/.test(A.$('itemBuffLine').textContent), 'wearing it turns the buff ACTIVE and lists it on the Items tab');
+  await wait(700);
+  const after = (await b.listCharacters()).find((x) => x.id === c.id);
+  ok(w.BSH.compute(after).skillMod[0] === sm0[0] + 4, 'saved and applied to the skill modifier (' + sm0[0] + ' -> ' + w.BSH.compute(after).skillMod[0] + ')');
+  // negative + talent + hold
+  A.setv(sel(), 't1'); A.setv(amt(), '-2'); [...bc().querySelectorAll('input[aria-label="Hold buff"]')].pop().checked = true; A.click(btn(bc(), 'ADD BUFF'));
+  ok([...bc().querySelectorAll('.ibrow b')].map((x) => x.textContent).join('|') === 'Strength +4|Dexterity -2'.replace('Strength', w.BSH.SKILLS[0].name).replace('Dexterity', w.BSH.TALENTS[1].name), 'a negative talent buff is added: ' + [...bc().querySelectorAll('.ibrow b')].map((x) => x.textContent));
+  open('Ring'); const rows = () => [...bc().querySelectorAll('.ibrow')];
+  const holdBox = () => rows()[1].querySelector('input[aria-label="Hold buff"]');
+  ok(rows()[1].querySelector('.tag').textContent === 'OFF', 'a Hold buff is OFF while the ring is only worn');
+  // Hold/Wear editable on an existing buff
+  holdBox().checked = false; holdBox().dispatchEvent(new w.Event('change', { bubbles: true }));
+  ok(rows()[1].querySelector('.tag').textContent === 'ACTIVE', 'clearing both boxes makes a buff always active (edit works)');
+  A.click(btn(rows()[1], 'REMOVE')); ok(rows().length === 1, 'REMOVE deletes a buff');
+  // wearable off -> body off -> buff off
+  const wearable = card('Ring').querySelector('.iflags input[aria-label="Wearable"]'); wearable.checked = false; wearable.dispatchEvent(new w.Event('change', { bubbles: true }));
+  ok(!A.$('itemBuffLine'), 'unticking Wearable removes it from the body, so the Wear buff stops');
+  ok(!!A.d.querySelector('#panel-buffs') && /Buffs from equipped items/.test(A.d.querySelector('#panel-buffs').textContent), 'Buffs tab says item buffs are automatic');
+  ok(w.__errors.length === 0, 'no script errors: ' + w.__errors.join('|'));
+  done();
+})();
