@@ -1,0 +1,714 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Bloodsoup Hell</title>
+<meta name="description" content="Companion app for the BLOODSOUP HELL tabletop RPG.">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Bloodsoup">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #000;
+    --ink: #7a2216;        /* brand dark brownish red */
+    --ink-text: #c9694f;   /* lighter shade for typed text / messages so they stay readable */
+    --ink-dim: #4a1a12;
+    --ink-input: #e5876c;  /* typed text on the character sheets */
+    --ink-ph: #75301f;     /* placeholders on the character sheets */
+    --fs: 0pt;             /* text size shift (Options) */
+    --grow: max(0pt, var(--fs));
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  }
+  :root:not([data-theme="light"]) { color-scheme: dark; } /* app is intentionally dark in every theme */
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  [hidden] { display: none !important; }
+  html { background: var(--bg); }
+  body {
+    font-size: calc(1rem + var(--fs));
+    min-height: 100dvh;
+    display: flex; flex-direction: column; align-items: center;
+    background: var(--bg); color: var(--ink);
+    padding: calc(env(safe-area-inset-top) + 64px) calc(env(safe-area-inset-right) + 16px) calc(env(safe-area-inset-bottom) + 32px) calc(env(safe-area-inset-left) + 16px);
+    font-family: var(--mono);
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Pixel text (drawn as SVG so it is identical on every device and works offline) */
+  .px { display: inline-block; line-height: 0; }
+  .px svg { display: block; fill: currentColor; shape-rendering: crispEdges; }
+
+  .screen { display: flex; flex-direction: column; align-items: center; width: 100%; margin: auto 0; }
+  .title { width: min(92vw, 960px); color: #7a2216; }   /* the title splash never changes color */
+  /* Title-screen statue: bottom-left (a quarter of its width in from the edge), about a third of the screen tall, behind everything else */
+  .hero {
+    position: fixed; left: env(safe-area-inset-left, 0px); bottom: 0; z-index: 0;
+    transform: translateX(25%);   /* a quarter of its own width in from the left edge */
+    height: 33vh; height: 33dvh; width: auto; pointer-events: none; user-select: none;
+    image-rendering: pixelated;
+  }
+  #screen-start > :not(.hero) { position: relative; z-index: 1; }
+  .title svg { width: 100%; height: auto; }
+  .heading { font-size: max(8px, calc(min(2.4rem, 7vw) + var(--fs))); margin-bottom: 2rem; text-align: center; }
+
+  .stack { display: flex; flex-direction: column; gap: 1.25rem; width: min(100%, 420px); }
+
+  /* Buttons */
+  .btn {
+    display: flex; align-items: center; justify-content: center;
+    width: 100%; min-height: 3.6rem; padding: .9rem 1.2rem;
+    background: transparent; color: var(--ink);
+    border: 3px solid var(--ink); border-radius: 0;
+    font-family: var(--mono); font-size: max(8px, calc(1.3rem + var(--fs))); cursor: pointer;
+    touch-action: manipulation;
+  }
+  .btn:hover, .btn:focus-visible { background: var(--ink); color: #000; outline: none; }
+  .btn:active { background: var(--ink-text); border-color: var(--ink-text); color: #000; }
+  .btn:disabled { opacity: .35; cursor: not-allowed; background: transparent; color: var(--ink); }
+  .btn.small { width: auto; min-height: 0; padding: .6rem .8rem; font-size: max(8px, calc(.8rem + var(--fs))); }
+  .corner { position: fixed; top: calc(env(safe-area-inset-top) + 12px); z-index: 10; background: #000; }
+  .corner.left { left: calc(env(safe-area-inset-left) + 12px); }
+  .corner.right { right: calc(env(safe-area-inset-right) + 12px); }
+  .start-buttons { margin-top: 1.4rem; }
+  /* Center-top RULES button, and the rulebook page (dark gray, high contrast, same font and ink colors) */
+  .corner.center { left: 50%; transform: translateX(-50%); }
+  #screen-start > p.version { margin: 1rem 0 0; text-align: center; color: var(--ink-text); font-size: max(8px, calc(.8rem + var(--fs))); letter-spacing: .08em; }
+  html.on-rules, body.on-rules { background: #2b2b2b; }
+  body.on-rules .corner { background: #2b2b2b; color: var(--ink-input); border-color: var(--ink-input); }
+  body.on-rules .corner:hover, body.on-rules .corner:focus-visible { background: var(--ink-input); color: #1c1c1c; }
+  #screen-rules { --r-ink: var(--ink-input); --r-bright: var(--ink-input); align-items: stretch; margin: 0; padding: 4.2rem 0 3rem; width: min(100%, 52rem); }
+  @supports (color: color-mix(in srgb, red, white)) {
+    #screen-rules { --r-ink: color-mix(in srgb, var(--ink-input) 70%, #fff); --r-bright: color-mix(in srgb, var(--ink-input) 45%, #fff); }
+  }
+  .rules-doc { color: var(--r-ink); font-family: var(--mono); font-size: max(8px, calc(1rem + var(--fs))); line-height: 1.6; text-align: left; overflow-wrap: anywhere; }
+  .rules-doc p { margin: 0 0 .85rem; }
+  .rules-doc h1 { margin: 0 0 1.2rem; font-size: max(8px, calc(1.7rem + var(--fs))); color: var(--r-bright); line-height: 1.25; letter-spacing: .03em; }
+  .rules-doc h2, .rules-doc h3 { color: var(--r-bright); line-height: 1.25; margin: 2.2rem 0 .8rem; padding-bottom: .35rem; border-bottom: 2px solid var(--ink-text); scroll-margin-top: 4.5rem; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: .3rem 1rem; }
+  .rules-doc h2 { font-size: max(8px, calc(1.45rem + var(--fs))); }
+  .rules-doc h3 { font-size: max(8px, calc(1.2rem + var(--fs))); margin-top: 1.6rem; border-bottom-width: 1px; }
+  .rules-doc h2:focus, .rules-doc h3:focus { outline: none; }
+  .rules-doc .totop { font-size: max(8px, calc(.7rem + var(--fs))); font-weight: normal; letter-spacing: .05em; }
+  .rules-doc a { color: var(--r-bright); text-decoration: underline; text-underline-offset: .2em; cursor: pointer; }
+  .rules-doc a:hover, .rules-doc a:focus-visible { background: var(--r-bright); color: #1c1c1c; outline: none; text-decoration: none; }
+  .rules-doc strong { color: var(--r-bright); }
+  .rules-doc ul { margin: 0 0 .85rem; padding-left: 1.4rem; }
+  .rules-doc li { margin: .15rem 0; }
+  .rules-doc .rtoc { border: 2px solid var(--ink-text); padding: .8rem 1rem 1rem; margin: 0 0 1.5rem; scroll-margin-top: 4.5rem; }
+  .rules-doc .rtoc h2 { margin: 0 0 .5rem; display: block; border: 0; padding: 0; }
+  .rules-doc .rtoc ul { list-style: none; padding-left: 0; margin: 0; }
+  .rules-doc .rtoc ul ul { padding-left: 1.3rem; margin: .1rem 0 .4rem; }
+  .rules-doc .rtoc li { margin: .3rem 0; }
+  .rules-doc .rtable { overflow-x: auto; margin: 0 0 1.1rem; -webkit-overflow-scrolling: touch; }
+  .rules-doc table { border-collapse: collapse; width: 100%; min-width: 46rem; color: var(--r-ink); font-family: var(--mono); font-size: max(8px, calc(.88rem + var(--fs))); line-height: 1.45; overflow-wrap: normal; }
+  .rules-doc th, .rules-doc td { border: 1px solid var(--ink-text); padding: .4rem .55rem; vertical-align: top; text-align: left; color: var(--r-ink); min-width: 6.5rem; overflow-wrap: break-word; word-break: normal; }
+  .rules-doc td:first-child { min-width: 0; }
+  .rules-doc th { background: #3d3d3d; color: var(--r-bright); }
+  .rules-doc th:first-child, .rules-doc td:first-child { width: 2.2rem; }
+  .rules-doc tr:nth-child(even) td { background: #323232; }
+
+
+  /* Forms */
+  form { display: flex; flex-direction: column; gap: 1.5rem; width: min(100%, 420px); }
+  .field { display: flex; flex-direction: column; gap: .7rem; font-size: max(8px, calc(1rem + var(--fs))); }
+  select {
+    width: 100%; padding: .55rem .6rem; background: #000; color: var(--ink-text);
+    border: 2px solid var(--ink); border-radius: 0; font-family: var(--mono); font-size: max(8px, calc(1rem + var(--fs)));
+  }
+  select:focus { outline: none; border-color: var(--ink-text); }
+  input, textarea {
+    width: 100%; padding: .85rem .9rem;
+    background: #000; color: var(--ink-text);
+    border: 3px solid var(--ink); border-radius: 0;
+    font-family: var(--mono); font-size: max(8px, calc(1.1rem + var(--fs))); /* 16px+ stops iOS zooming on focus */
+    caret-color: var(--ink-text);
+  }
+  input::placeholder, textarea::placeholder { color: var(--ink-dim); }
+  /* character sheets: brighter typed text and placeholders so they read clearly on black */
+  .sheet input, .sheet textarea, .sheet select, .bigrow input.num { color: var(--ink-input); caret-color: var(--ink-input); }
+  .sheet input::placeholder, .sheet textarea::placeholder { color: var(--ink-ph); }
+  input:focus, textarea:focus { outline: none; border-color: var(--ink-text); }
+  .msg { min-height: 1.4em; color: var(--ink-text); font-size: max(8px, calc(.9rem + var(--fs))); line-height: 1.4; }
+
+  /* Logged-in home */
+  .welcome-name { margin: 0 0 2.5rem; color: var(--ink-text); font-size: max(8px, calc(1.6rem + var(--fs))); text-align: center; word-break: break-word; }
+  .note { font-size: max(8px, calc(.9rem + var(--fs))); opacity: .8; text-align: center; }
+
+  /* Characters list */
+  .char-list { display: flex; flex-direction: column; gap: 1rem; }
+  .char-btn { flex-direction: column; align-items: flex-start; gap: .3rem; text-align: left; font-size: max(8px, calc(1.1rem + var(--fs))); }
+  .char-btn .sub { font-size: max(8px, calc(.8rem + var(--fs))); opacity: .85; }
+
+  /* Campaigns */
+  .members { display: flex; flex-direction: column; gap: .7rem; }
+  .member { border: 2px solid var(--ink); padding: .6rem .7rem; display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+  .member .who { flex: 1 1 8rem; min-width: 0; word-break: break-word; color: var(--ink-text); }
+  .member .who small { display: block; font-size: max(8px, calc(.72rem + var(--fs))); opacity: .8; color: var(--ink); }
+  .stackf { display: flex; flex-direction: column; gap: .9rem; }
+  .hand-box { display: flex; flex-direction: column; gap: .6rem; align-items: flex-start; }
+  .hand-box:empty { display: none; }
+  .hand-box .note { text-align: left; margin: 0; }
+  .cchar .char-btn { flex: 1 1 12rem; min-width: 0; }
+  .cchar .btn.small { align-self: center; }
+
+  /* Encounters */
+  .enc-box { width: 100%; display: flex; flex-direction: column; gap: .8rem; margin-bottom: 1.2rem; }
+  .enc-box:empty { display: none; }
+  .enc-banner { border: 3px solid var(--ink-text); padding: .8rem .9rem; display: flex; flex-direction: column; gap: .6rem; color: var(--ink-text); }
+  .enc-banner strong { font-size: max(8px, calc(1.1rem + var(--fs))); letter-spacing: .1em; }
+  .enc-banner span { font-size: max(8px, calc(.9rem + var(--fs))); line-height: 1.4; }
+  .enc-banner .acts { display: flex; gap: .5rem; flex-wrap: wrap; }
+  .enc-banner .round { font-size: max(8px, calc(1.6rem + var(--fs))); font-weight: 700; letter-spacing: .12em; }
+  .cchar.turn { background: color-mix(in srgb, var(--ink) 28%, transparent); outline: 3px solid var(--ink-text); outline-offset: -3px; }
+  .turnmark { flex: 0 0 auto; align-self: center; font-size: max(8px, calc(1.5rem + var(--fs))); font-weight: 700; color: var(--ink-text); }
+  .enc-modal { position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.94); overflow-y: auto; display: flex; justify-content: center;
+    padding: calc(env(safe-area-inset-top) + 16px) calc(env(safe-area-inset-right) + 16px) calc(env(safe-area-inset-bottom) + 24px) calc(env(safe-area-inset-left) + 16px); }
+  .enc-modal[hidden] { display: none; }
+  .etstep { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; margin: .4rem 0; }
+  .etstep b { min-width: 1.6rem; text-align: center; }
+  .etdie { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; margin: .35rem 0; padding: .35rem .5rem; border: 1px solid currentColor; }
+  .etdie .val { font-weight: bold; }
+  .enc-panel { width: min(100%, 520px); margin: auto; border: 3px solid var(--ink); background: #000; padding: 1.1rem; display: flex; flex-direction: column; gap: 1rem; }
+  .enc-top { display: flex; justify-content: flex-end; }
+  .enc-title { font-size: max(8px, calc(1.5rem + var(--fs))); color: var(--ink-text); text-transform: uppercase; letter-spacing: .06em; text-align: center; line-height: 1.3; }
+  .enc-sub { text-align: center; font-size: max(8px, calc(.9rem + var(--fs))); color: var(--ink); }
+  .enc-row { border: 2px solid var(--ink); padding: .7rem; display: flex; flex-direction: column; gap: .6rem; }
+  .enc-name { display: flex; justify-content: space-between; align-items: baseline; gap: .6rem; color: var(--ink-text); word-break: break-word; }
+  .enc-ctl { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+  .enc-ctl input { width: 6rem; padding: .55rem .5rem; text-align: center; }
+  .enc-done { color: var(--ink-text); font-size: max(8px, calc(.9rem + var(--fs))); line-height: 1.4; }
+  .enc-qm { flex: 1 1 100%; display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+  .enc-qm input { width: 5.5rem; padding: .5rem .5rem; text-align: center; }
+  .enc-qm .lbl { font-size: max(8px, calc(.8rem + var(--fs))); color: var(--ink); }
+  .cname { flex: 1 1 12rem; min-width: 0; display: flex; flex-direction: column; gap: .4rem; }
+  .cname .char-btn { width: 100%; flex: 0 0 auto; }
+  .spawn-order { display: flex; flex-direction: column; gap: .4rem; margin: .5rem 0 1rem; }
+  .spawn-order .member { align-items: center; }
+  .spawn-prompt { margin: .75rem 0 .4rem; }
+  .spawn-text { width: 100%; min-height: 7rem; box-sizing: border-box; }
+  .spawn-round { display: flex; flex-direction: column; gap: .4rem; margin: .5rem 0; padding: .5rem; border: 1px solid var(--ink); }
+  .spawn-round select { width: 100%; }
+  .spawn-choices { display: flex; flex-direction: column; gap: .6rem; margin: .5rem 0 1rem; }
+  .token-layer { position: absolute; left: 0; top: 0; width: 100%; height: 100%; container-type: inline-size; pointer-events: none; }
+  .token { position: absolute; box-sizing: border-box; padding: 0; touch-action: none; pointer-events: auto; cursor: default; }
+  .token.mine { cursor: grab; }
+  .token .disc { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; max-width: 100%; max-height: 100%; border-radius: 50%; color: #fff; font-weight: bold; line-height: 1;
+    font-size: calc(var(--cell) * 45cqw); border: 2px solid #fff; box-shadow: 0 0 0 1px #000; background-size: cover; background-position: center; box-sizing: border-box; }
+  .token.sel .disc { box-shadow: 0 0 0 3px var(--ink-text), 0 0 0 4px #000; }
+  .token-name { position: absolute; left: 50%; bottom: 100%; transform: translateX(-50%); white-space: nowrap; background: #000; color: #fff; border: 1px solid #fff;
+    padding: .15rem .4rem; font-size: .8rem; line-height: 1.2; z-index: 5; pointer-events: none; }
+  .token-list { display: flex; flex-direction: column; gap: .4rem; margin: .4rem 0; }
+  .token-row, .token-pad { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+  .token-row .ename { flex: 1 1 8rem; }
+  .token-pad { margin: .5rem 0; }
+  .token-field { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; }
+  .token-preview { width: 3rem; height: 3rem; border-radius: 50%; border: 2px solid var(--ink); background-size: cover; background-position: center; display: flex; align-items: center; justify-content: center; font-size: .6rem; color: var(--ink-text); }
+  .edge-tab { position: fixed; top: 38%; z-index: 20; writing-mode: vertical-rl; padding: .9rem .4rem; font: inherit; font-size: .9rem; letter-spacing: .12em;
+    color: var(--ink-text); background: var(--bg, #000); border: 2px solid var(--ink); cursor: pointer; }
+  .edge-tab.left { left: 0; border-left: 0; border-radius: 0 .5rem .5rem 0; }
+  .edge-tab.right { right: 0; border-right: 0; border-radius: .5rem 0 0 .5rem; }
+  .edge-tab[hidden] { display: none; }
+  .map-stage { position: relative; width: 100%; line-height: 0; }
+  .map-stage img { display: block; width: 100%; height: auto; user-select: none; -webkit-user-drag: none; }
+  .map-stage .map-grid { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; }
+  .map-scroll { overflow: auto; max-height: 75vh; border: 1px solid var(--ink); margin-top: .5rem; touch-action: pan-x pan-y pinch-zoom; }
+  .map-zoom { max-width: none; }
+  #mapEditBody .fld input[type=range] { width: 100%; }
+  .ename { font-weight: bold; overflow-wrap: anywhere; }
+  .cchar.event { border-style: dashed; }
+  .vitals { display: flex; flex-wrap: wrap; gap: .4rem .7rem; }
+  .vit { display: inline-flex; align-items: baseline; gap: .25rem; color: var(--ink-text); font-size: max(8px, calc(.85rem + var(--fs))); }
+  .vit b { letter-spacing: .06em; }
+  .vit input.num { width: 3.6rem; padding: .25rem .2rem; text-align: center; color: var(--ink-input); caret-color: var(--ink-input); font-size: max(16px, calc(.95rem + var(--fs))); }
+  .vit .of { color: var(--ink); }
+  .dmgrow { display: flex; gap: .5rem; align-items: stretch; } .dmgrow input { flex: 1 1 5rem; min-width: 0; }
+  .vit .btn.small { padding: .25rem .5rem; }
+  .actions-list, .actions-detail { display: flex; flex-direction: column; gap: .5rem; margin-bottom: .8rem; } .actions-list .btn { width: 100%; text-align: left; }
+  .dline { display: block; margin-bottom: .5rem; } .dline.dim { color: var(--ink); font-size: .9em; } .rest-name { font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+  .rest-sep { border: 0; border-top: 1px solid var(--ink); margin: .8rem 0; } .rest-die { align-items: center; } .rest-die .dlbl { flex: 0 0 5.2rem; color: var(--ink-text); } .rest-die input { flex: 1 1 4rem; }
+  .apboxes { display: flex; gap: .5rem; } .apbox { flex: 1 1 0; border: 2px solid var(--ink); padding: .4rem .5rem; display: flex; flex-direction: column; gap: .15rem; color: var(--ink-text); } .apbox b { font-size: max(8px, calc(1.3rem + var(--fs))); }
+  button.acost { background: transparent; font: inherit; cursor: pointer; } button.acost:hover, button.acost:focus-visible { background: var(--ink); color: #000; outline: none; }
+  .arow { display: flex; gap: .5rem; align-items: stretch; } .arow .btn { flex: 1 1 auto; min-width: 0; width: auto; }
+  .acost { flex: 0 0 auto; min-width: 4.2rem; display: flex; align-items: center; justify-content: center; border: 2px solid var(--ink); color: var(--ink-text); padding: 0 .5rem; letter-spacing: .06em; }
+  .skill-sel { width: 100%; }
+  .skill-out { color: var(--ink-text); font-size: max(8px, calc(1rem + var(--fs))); line-height: 1.4; min-height: 1.4em; word-break: break-word; }
+  .tag.init { background: var(--ink-text); color: #000; border-color: var(--ink-text); }
+  .tag { border: 2px solid var(--ink-text); color: var(--ink-text); font-size: max(8px, calc(.72rem + var(--fs))); letter-spacing: .08em; padding: .1rem .35rem; }
+  .member .acts { display: flex; gap: .5rem; flex-wrap: wrap; }
+  .campaign-actions { display: flex; flex-direction: column; gap: 1rem; align-items: flex-start; margin-top: 2rem; }
+
+  /* Character sheet */
+  .sheet { width: min(100%, 680px); align-items: stretch; margin: 0 auto; }
+  .sheet-title { font-size: max(8px, calc(1.3rem + var(--fs))); color: var(--ink-text); text-align: center; margin-bottom: 1rem; word-break: break-word; text-transform: uppercase; letter-spacing: .06em; }
+  .save-status { font-size: max(8px, calc(.7rem + var(--fs))); text-align: center; opacity: .85; min-height: 1.2em; margin: -.6rem 0 .8rem; letter-spacing: .08em; text-transform: uppercase; }
+  .tabs { display: flex; gap: .4rem; overflow-x: auto; padding-bottom: .6rem; margin-bottom: 1.2rem; scrollbar-width: thin; scrollbar-color: var(--ink) #000; }
+  .tab {
+    flex: 0 0 auto; padding: .6rem .75rem; background: transparent; color: var(--ink);
+    border: 2px solid var(--ink); border-radius: 0; font-family: var(--mono); font-size: max(8px, calc(.8rem + var(--fs))); letter-spacing: .06em; cursor: pointer;
+  }
+  .tab[aria-selected="true"] { background: var(--ink); color: #000; }
+  .tab:focus-visible { outline: 2px solid var(--ink-text); outline-offset: 2px; }
+
+  .sheet input, .sheet textarea { padding: .55rem .6rem; font-size: max(16px, calc(1rem + var(--fs))); border-width: 2px; }
+  .sheet textarea { min-height: 7rem; resize: vertical; line-height: 1.4; }
+  .sheet input.num { text-align: center; padding: .5rem .15rem; -moz-appearance: textfield; }
+  .sheet input.num::-webkit-outer-spin-button, .sheet input.num::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+  .sec { margin: 1.6rem 0 .8rem; padding-bottom: .4rem; border-bottom: 2px solid var(--ink); font-size: max(8px, calc(.85rem + var(--fs))); letter-spacing: .12em; text-transform: uppercase; }
+  .sec:first-child { margin-top: 0; }
+  .hint { font-size: max(8px, calc(.75rem + var(--fs))); line-height: 1.4; opacity: .8; margin-bottom: .8rem; }
+
+  .fld { display: flex; flex-direction: column; gap: .35rem; min-width: 0; }
+  .lbl { font-size: max(8px, calc(.72rem + var(--fs))); letter-spacing: .08em; text-transform: uppercase; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: .8rem; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: .6rem; }
+  .span2 { grid-column: 1 / -1; }
+  .chk { display: flex; align-items: center; gap: .6rem; font-size: max(8px, calc(.9rem + var(--fs))); cursor: pointer; }
+  .chk input { width: 1.3rem; height: 1.3rem; accent-color: var(--ink); }
+
+  .cards { display: grid; grid-template-columns: 1fr 1fr; gap: .8rem; }
+  .card { border: 2px solid var(--ink); padding: .7rem; display: flex; flex-direction: column; gap: .5rem; min-width: 0; }
+  .card .big { font-size: max(8px, calc(1.9rem + var(--fs))); color: var(--ink-text); line-height: 1; }
+  .card .of { font-size: max(8px, calc(.75rem + var(--fs))); opacity: .85; }
+  .bigrow { display: flex; align-items: baseline; gap: .4rem; flex-wrap: wrap; }
+  .bigrow input.num { width: 4.5rem; font-size: max(16px, calc(1.4rem + var(--fs))); color: var(--ink-text); }
+
+  .row { display: grid; align-items: center; gap: .4rem; padding: .35rem 0; border-bottom: 1px solid var(--ink-dim); }
+  .row.head { font-size: max(8px, calc(.68rem + var(--fs))); letter-spacing: .06em; text-transform: uppercase; border-bottom: 2px solid var(--ink); padding-bottom: .4rem; }
+  .row.head span:not(:first-child) { text-align: center; }
+  .row.sk { grid-template-columns: 1fr 3.3rem 3.3rem 3.3rem 3rem; }
+  .row.st { grid-template-columns: 2.9rem 2rem 2.45rem 2.45rem; gap: .2rem; justify-content: start; }
+  html[data-size="sizeable"] .stats2, html[data-size="super"] .stats2 { grid-template-columns: 1fr; }
+  html[data-size="sizeable"] .row.st, html[data-size="super"] .row.st { grid-template-columns: 1fr 3.4rem 3.4rem 3.4rem; justify-content: stretch; }
+  .stats2 { display: grid; grid-template-columns: 1fr 1fr; column-gap: 1rem; align-items: start; }
+  .statcol { min-width: 0; }
+  .statcol .nm small { font-size: max(8px, calc(.56rem + var(--fs))); line-height: 1.1; }
+  .statcol .nm b { font-size: max(8px, calc(.9rem + var(--fs))); }
+  .statcol .val { font-size: max(8px, calc(1rem + var(--fs))); }
+  .statcol .row.st input.num { font-size: max(16px, calc(.85rem + var(--fs))); padding: .45rem .05rem; border-width: 2px; }
+  .statcol .row.head { font-size: max(8px, calc(.56rem + var(--fs))); letter-spacing: 0; }
+  /* Skills: four groups, two columns, inputs and modifier right under each name */
+  .skgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .4rem; align-items: start; }
+  .skc { border: 2px solid var(--ink-dim); padding: .4rem .45rem .45rem; display: flex; flex-direction: column; gap: .35rem; min-width: 0; }
+  .skt { display: flex; justify-content: space-between; align-items: flex-start; gap: .3rem; }
+  .skt .val { flex: none; min-width: 1.4rem; text-align: right; font-size: max(8px, calc(.85rem + var(--fs))); }
+  .skc .nm b { font-size: max(8px, calc(.55rem + var(--fs))); letter-spacing: 0; }
+  .skc .nm small { font-size: max(8px, calc(.56rem + var(--fs))); line-height: 1.1; }
+  .ski { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .25rem; }
+  .ski .skf:first-child { grid-column: 1 / -1; }   /* PROF sits above the two +/- boxes */
+  .skf { display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
+  .skf small { font-size: max(8px, calc(.5rem + var(--fs))); letter-spacing: .03em; opacity: .85; text-align: center; white-space: nowrap; }
+  .skc input.num { font-size: max(16px, calc(.85rem + var(--fs))); padding: .4rem .05rem; border-width: 2px; text-align: center; }
+  html[data-size="sizeable"] .skgrid, html[data-size="super"] .skgrid { grid-template-columns: 1fr 1fr; }
+  .subsec { margin: 1rem 0 .3rem; font-size: max(8px, calc(.8rem + var(--fs))); font-weight: 400; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-text); padding-bottom: .3rem; border-bottom: 1px solid var(--ink); }
+  .row.one { grid-template-columns: 1fr 4rem; }
+  .nm { display: flex; flex-direction: column; min-width: 0; line-height: 1.2; overflow-wrap: anywhere; }
+  .nm b { font-weight: 400; color: var(--ink-text); font-size: max(8px, calc(.95rem + var(--fs))); }
+  .nm small { font-size: max(8px, calc(.68rem + var(--fs))); opacity: .8; }
+  .val { text-align: center; font-size: max(8px, calc(1.15rem + var(--fs))); color: var(--ink-text); }
+  .cols2 { display: grid; grid-template-columns: 1fr; column-gap: 1.4rem; }
+  @media (min-width: 540px) { .cols2 { grid-template-columns: 1fr 1fr; } }
+
+  .lv { display: flex; justify-content: space-between; padding: .4rem 0; border-bottom: 1px solid var(--ink-dim); font-size: max(8px, calc(.95rem + var(--fs))); }
+  .lv span:last-child { color: var(--ink-text); }
+  .lv.sub { padding-left: 1.2rem; font-size: max(8px, calc(.85rem + var(--fs))); }
+  .lv.cls { margin-top: .6rem; border-bottom: 2px solid var(--ink); }
+  .lv { align-items: center; gap: .8rem; }
+  .bar { flex: 0 0 55%; height: .8rem; border: 2px solid var(--ink); background: #000; position: relative; }
+  .lv.sub .bar { height: .6rem; flex-basis: calc((100% + 1.2rem) * .55); }   /* same left edge as the class bars */
+  .bar i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--ink); transition: width .2s; }
+  .bar.top { border-color: var(--ink-text); }
+  .bar.top i { background: var(--ink-text); }
+
+  .item { border: 2px solid var(--ink); padding: .4rem; margin-bottom: .6rem; }
+  .iline { display: grid; grid-template-columns: 1.7rem minmax(0, 1fr) 1.5rem 3rem 3.4rem 4.8rem; gap: .3rem; align-items: center; cursor: pointer; }
+  .iline input { padding: .5rem .3rem; border-width: 2px; }
+  .iline input.num { text-align: center; padding-left: .05rem; padding-right: .05rem; }
+  .iline .btn { width: 100%; min-height: 0; padding: .5rem .1rem; font-size: max(8px, calc(.68rem + var(--fs))); letter-spacing: 0; }
+  .iline.abl { grid-template-columns: 1.7rem minmax(0, 1fr) 4.8rem; }
+  .ihead { cursor: default; margin: 0 .4rem .3rem; padding-right: .4rem; font-size: max(8px, calc(.56rem + var(--fs))); letter-spacing: .08em; text-transform: uppercase; opacity: .85; }
+  .ihead span { text-align: center; }
+  .ihead span:nth-child(2) { text-align: left; }
+  .chev { width: 100%; min-height: 0; padding: .45rem 0; background: transparent; color: var(--ink-text); border: 2px solid var(--ink); font-family: var(--mono); font-size: max(8px, calc(.85rem + var(--fs))); cursor: pointer; }
+  .htag { text-align: center; font-size: max(8px, calc(.7rem + var(--fs))); color: var(--ink-text); letter-spacing: 0; }
+  .item.held { border-color: var(--ink-text); }
+  .iflags { display: flex; flex-wrap: wrap; gap: .4rem 1.2rem; margin-bottom: .2rem; }
+  .ibuffs { display: flex; flex-direction: column; gap: .5rem; margin-top: .5rem; border: 1px solid var(--ink-dim); padding: .6rem; }
+  .ibuffs[hidden] { display: none; }
+  .ibuffs .row2 { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+  .ibuffs select { flex: 1 1 10rem; min-width: 0; }
+  .ibuffs input.num { width: 5rem; text-align: center; }
+  .ibrow { display: flex; flex-wrap: wrap; gap: .4rem .8rem; align-items: center; padding: .3rem 0; border-bottom: 1px solid var(--ink-dim); }
+  .ibrow b { flex: 1 1 8rem; }
+  .wprops { margin-top: .5rem; display: flex; flex-direction: column; gap: .4rem; }
+  .wpgrid { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
+  .wpgrid[hidden] { display: none; }
+  .wpgrid .wp-wide { grid-column: 1 / -1; }
+  .iact { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .5rem; }
+  .iact .btn { width: auto; min-height: 0; padding: .5rem .7rem; font-size: max(8px, calc(.72rem + var(--fs))); letter-spacing: 0; }
+  .btn[aria-pressed="true"] { background: var(--ink); color: #000; }
+  .igive, .give-box { display: flex; flex-direction: column; gap: .5rem; margin-top: .5rem; }
+  .igive[hidden] { display: none; }
+  .igive .row2, .give-box .row2 { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+  .igive select, .give-box select, .igive input, .give-box input, .give-box textarea { min-width: 0; }
+  .igive input.num, .give-box input.num { width: 5rem; text-align: center; }
+  .hands { margin: 0 0 .6rem; text-align: left; }
+  .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: max(1rem, env(safe-area-inset-bottom)); z-index: 50; width: min(92vw, 28rem);
+    background: #000; border: 2px solid var(--ink-text); color: var(--ink-text); padding: .7rem .9rem; font-size: max(8px, calc(.9rem + var(--fs))); line-height: 1.4; cursor: pointer; }
+  .toast[hidden] { display: none; }
+  .idesc { margin-top: .5rem; }
+  .idesc[hidden] { display: none; }
+  .item textarea { min-height: 3.5rem; }
+  .abil { border: 2px solid var(--ink); padding: .6rem; margin-bottom: .8rem; display: grid; gap: .5rem; }
+  .abil textarea { min-height: 4.5rem; }
+  .tools { display: flex; justify-content: flex-end; }
+  .danger { margin-top: 2rem; }
+
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+  /* Options */
+  .opt-group { display: flex; flex-direction: column; gap: .6rem; width: min(100%, 420px); }
+  .opt-title { margin: 1.6rem 0 .2rem; font-size: max(8px, calc(.85rem + var(--fs))); letter-spacing: .12em; text-transform: uppercase; width: min(100%, 420px); border-bottom: 2px solid var(--ink); padding-bottom: .4rem; }
+  .opt { text-align: left; padding: .7rem .9rem; background: transparent; border: 3px solid var(--ink); color: var(--ink); font-family: var(--mono); font-size: max(8px, calc(1rem + var(--fs))); cursor: pointer; border-radius: 0; }
+  .opt[aria-pressed="true"] { background: var(--ink); color: #000; }
+  .opt:focus-visible { outline: 2px solid var(--ink-text); outline-offset: 2px; }
+</style>
+</head>
+<body>
+
+  <!-- Shown only while logged in, on every screen -->
+  <button class="btn small corner center" id="rulesBtn" type="button" data-go="rules"><span class="px" data-px="RULES"></span></button>
+  <button class="btn small corner right" id="logoutBtn" type="button" hidden><span class="px" data-px="LOG OUT"></span></button>
+
+  <!-- LOADING (shown while the saved session is restored) -->
+  <section class="screen" id="screen-loading">
+    <h2 class="heading px" data-px="LOADING"></h2>
+  </section>
+
+  <!-- START -->
+  <section class="screen" id="screen-start" hidden>
+    <img class="hero" src="statue.png" alt="" aria-hidden="true" draggable="false">
+    <h1 class="title px" data-px="BLOODSOUP|HELL" data-fluid></h1>
+    <p class="version" id="appVersion"></p>
+    <div class="stack start-buttons">
+      <button class="btn" type="button" data-go="login" data-auth="out"><span class="px" data-px="LOG IN"></span></button>
+      <button class="btn" type="button" data-go="create" data-auth="out"><span class="px" data-px="CREATE ACCOUNT"></span></button>
+      <button class="btn" type="button" id="startLogout" data-auth="in" hidden><span class="px" data-px="LOG OUT"></span></button>
+      <button class="btn" type="button" data-go="home" data-auth="in" hidden><span class="px" data-px="ENTER THE RING"></span></button>
+    </div>
+    <p class="note" id="modeNote" style="margin-top:1.5rem;max-width:420px" hidden></p>
+  </section>
+
+  <!-- LOG IN -->
+  <section class="screen" id="screen-login" hidden>
+    <button class="btn small corner left" type="button" data-go=""><span class="px" data-px="< BACK"></span></button>
+    <h2 class="heading px" data-px="LOG IN"></h2>
+    <form id="loginForm" novalidate>
+      <label class="field">
+        <span class="px" data-px="USERNAME"></span>
+        <input id="loginUser" name="username" type="text" maxlength="20" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false">
+      </label>
+      <label class="field">
+        <span class="px" data-px="PASSWORD"></span>
+        <input id="loginPass" name="password" type="password" maxlength="72" autocomplete="current-password">
+      </label>
+      <p class="msg" id="loginMsg" role="alert"></p>
+      <button class="btn" id="loginBtn" type="submit" disabled><span class="px" data-px="LOG IN"></span></button>
+      <button class="btn small" type="button" data-go="forgot"><span class="px" data-px="FORGOT PASSWORD"></span></button>
+    </form>
+  </section>
+
+  <!-- FORGOT PASSWORD -->
+  <section class="screen" id="screen-forgot" hidden>
+    <button class="btn small corner left" type="button" data-go="login"><span class="px" data-px="< BACK"></span></button>
+    <h2 class="heading px" data-px="FORGOT PASSWORD"></h2>
+    <form id="forgotForm" novalidate>
+      <p class="note">Enter your username or the email on your account. If it matches an account, we will email a link to choose a new password.</p>
+      <label class="field">
+        <span class="px" data-px="USERNAME OR EMAIL"></span>
+        <input id="forgotWho" name="username" type="text" maxlength="120" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false">
+      </label>
+      <p class="msg" id="forgotMsg" role="alert"></p>
+      <button class="btn" id="forgotBtn" type="submit" disabled><span class="px" data-px="SEND LINK"></span></button>
+    </form>
+  </section>
+
+  <!-- CHOOSE A NEW PASSWORD (reached from the email link) -->
+  <section class="screen" id="screen-reset" hidden>
+    <h2 class="heading px" data-px="NEW PASSWORD"></h2>
+    <form id="resetForm" novalidate>
+      <label class="field">
+        <span class="px" data-px="NEW PASSWORD"></span>
+        <input id="resetPass" name="password" type="password" maxlength="72" autocomplete="new-password">
+      </label>
+      <label class="field">
+        <span class="px" data-px="REPEAT PASSWORD"></span>
+        <input id="resetPass2" name="password2" type="password" maxlength="72" autocomplete="new-password">
+      </label>
+      <p class="msg" id="resetMsg" role="alert"></p>
+      <button class="btn" id="resetBtn" type="submit" disabled><span class="px" data-px="SET PASSWORD"></span></button>
+    </form>
+  </section>
+
+  <!-- CREATE ACCOUNT -->
+  <section class="screen" id="screen-create" hidden>
+    <button class="btn small corner left" type="button" data-go=""><span class="px" data-px="< BACK"></span></button>
+    <h2 class="heading px" data-px="CREATE ACCOUNT"></h2>
+    <form id="createForm" novalidate>
+      <label class="field">
+        <span class="px" data-px="NAME"></span>
+        <input id="createName" name="name" type="text" maxlength="40" autocomplete="name">
+      </label>
+      <label class="field">
+        <span class="px" data-px="USERNAME"></span>
+        <input id="createUser" name="username" type="text" maxlength="20" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false">
+      </label>
+      <label class="field">
+        <span class="px" data-px="EMAIL"></span>
+        <input id="createEmail" name="email" type="email" maxlength="120" autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="email">
+      </label>
+      <label class="field">
+        <span class="px" data-px="PASSWORD"></span>
+        <input id="createPass" name="password" type="password" maxlength="72" autocomplete="new-password">
+      </label>
+      <p class="hint" style="margin:-.4rem 0 0">Password: at least 8 characters. Username: 3 to 20 letters, numbers or underscores.</p>
+      <p class="msg" id="createMsg" role="alert"></p>
+      <button class="btn" id="createBtn" type="submit" disabled><span class="px" data-px="CREATE ACCOUNT"></span></button>
+    </form>
+  </section>
+
+  <!-- RULES -->
+  <section class="screen" id="screen-rules" hidden>
+    <button class="btn small corner left" type="button" id="rulesBack"><span class="px" data-px="< BACK"></span></button>
+    <article class="rules-doc" id="rulesDoc" aria-label="Rulebook"></article>
+  </section>
+
+  <!-- HOME (logged in) -->
+  <section class="screen" id="screen-home" hidden>
+    <button class="btn small corner left" type="button" data-go="start"><span class="px" data-px="TITLE"></span></button>
+    <h2 class="heading px" data-px="WELCOME"></h2>
+    <p class="welcome-name" id="welcomeName"></p>
+    <div class="stack">
+      <button class="btn" type="button" data-go="characters"><span data-px="CHARACTERS"></span></button>
+      <button class="btn" type="button" data-go="campaigns"><span data-px="CAMPAIGNS"></span></button>
+      <button class="btn" type="button" data-go="create-campaign"><span data-px="CREATE CAMPAIGN"></span></button>
+      <button class="btn" type="button" data-go="join-campaign"><span data-px="JOIN CAMPAIGN"></span></button>
+      <button class="btn" type="button" data-go="options"><span data-px="OPTIONS"></span></button>
+    </div>
+  </section>
+
+  <!-- OPTIONS -->
+  <section class="screen" id="screen-options" hidden>
+    <button class="btn small corner left" type="button" data-go="home"><span class="px" data-px="< BACK"></span></button>
+    <h2 class="heading px" data-px="OPTIONS"></h2>
+    <h3 class="opt-title">Text size</h3>
+    <div class="opt-group" id="sizeOpts"></div>
+    <h3 class="opt-title">Color</h3>
+    <div class="opt-group" id="colorOpts"></div>
+    <p class="note" style="margin-top:1.4rem;max-width:420px">These settings are saved on this device only.</p>
+  </section>
+
+  <!-- CAMPAIGNS: the ones I belong to -->
+  <section class="screen" id="screen-campaigns" hidden>
+    <button class="btn small corner left" type="button" data-go="home"><span class="px" data-px="< BACK"></span></button>
+    <h2 class="heading px" data-px="CAMPAIGNS"></h2>
+    <div class="stack">
+      <p class="note" id="noCampaigns" hidden>You are not in any campaigns yet.</p>
+      <p class="msg" id="campaignsMsg" role="alert"></p>
+      <div class="char-list" id="myCampaigns"></div>
+    </div>
+  </section>
+
+  <!-- CREATE CAMPAIGN -->
+  <section class="screen" id="screen-createcampaign" hidden>
+    <button class="btn small corner left" type="button" data-go="home"><span class="px" data-px="< BACK"></span></button>
+    <h2 class="heading px" data-px="CREATE CAMPAIGN"></h2>
+    <form id="campaignForm" autocomplete="off" novalidate>
+      <label class="field">Campaign name
+        <input id="campaignName" type="text" maxlength="40" autocomplete="off" autocapitalize="words" spellcheck="false">
+      </label>
+      <p class="hint">You become the campaign's QM. A QM can remove players, make other players QM, and delete the campaign.</p>
+      <p class="msg" id="campaignFormMsg" role="alert"></p>
+      <button class="btn" id="campaignBtn" type="submit" disabled><span class="px" data-px="CREATE CAMPAIGN"></span></button>
+    </form>
+  </section>
+
+  <!-- JOIN CAMPAIGN: campaigns I am not in yet -->
+  <section class="screen" id="screen-joincampaign" hidden>
+    <button class="btn small corner left" type="button" data-go="home"><span class="px" data-px="< BACK"></span></button>
+    <h2 class="heading px" data-px="JOIN CAMPAIGN"></h2>
+    <div class="stack">
+      <p class="note" id="noJoin" hidden>No campaigns to join right now.</p>
+      <p class="msg" id="joinMsg" role="alert"></p>
+      <div class="char-list" id="joinList"></div>
+    </div>
+  </section>
+
+  <!-- ONE CAMPAIGN -->
+  <section class="screen sheet" id="screen-campaign" hidden>
+    <button class="btn small corner left" type="button" data-go="campaigns"><span class="px" data-px="< BACK"></span></button>
+    <h2 class="sheet-title" id="campaignTitle"></h2>
+    <p class="save-status" id="campaignMeta"></p>
+    <p class="msg" id="campaignMsg" role="alert"></p>
+    <button class="edge-tab left" type="button" id="encMapTab" hidden aria-label="Show the encounter map"><span>MAP</span></button>
+    <div class="enc-box" id="encounterBox"></div>
+    <div class="enc-box" id="spawnBanner"></div>
+    <div class="enc-box" id="attackWait"></div>
+    <div class="enc-box" id="comboBox"></div>
+    <div class="members" id="memberList"></div>
+    <h3 class="sec" id="campCharsHead" hidden>Characters</h3>
+    <p class="note" id="noCampChars" hidden>No characters linked to this campaign yet. Link one from its INFO tab.</p>
+    <div class="members" id="campChars"></div>
+    <div class="campaign-actions" id="npcActions"></div>
+    <div class="give-box" id="spawnBox"></div>
+    <div class="campaign-actions" id="mapActions"></div>
+    <h3 class="sec" id="giveHead" hidden>Give an item</h3>
+    <div class="give-box" id="giveBox"></div>
+    <div class="campaign-actions" id="campaignActions"></div>
+  </section>
+
+  <!-- SPAWN CHARACTER -->
+  <section class="screen sheet" id="screen-spawn" hidden>
+    <button class="btn small corner left" type="button" id="spawnBack"><span class="px" data-px="< BACK"></span></button>
+    <h2 class="sheet-title">Spawn Character</h2>
+    <p class="save-status" id="spawnMeta"></p>
+    <p class="msg" id="spawnMsg" role="alert"></p>
+    <div id="spawnBody"></div>
+  </section>
+
+  <!-- ENCOUNTER MAPS -->
+  <section class="screen sheet" id="screen-maps" hidden>
+    <button class="btn small corner left" type="button" id="mapsBack"><span class="px" data-px="< BACK"></span></button>
+    <h2 class="sheet-title" id="mapsTitle"></h2>
+    <p class="msg" id="mapsMsg" role="alert"></p>
+    <div class="members" id="mapsBody"></div>
+  </section>
+  <section class="screen sheet" id="screen-mapview" hidden>
+    <button class="btn small corner left" type="button" id="mapViewBack"><span class="px" data-px="< BACK"></span></button>
+    <h2 class="sheet-title" id="mapViewTitle"></h2>
+    <p class="msg" id="mapViewMsg" role="alert"></p>
+    <div id="mapViewBody"></div>
+    <button class="edge-tab right" type="button" id="mapBackTab" hidden aria-label="Back to the encounter"><span>ENCOUNTER</span></button>
+  </section>
+  <section class="screen sheet" id="screen-mapedit" hidden>
+    <button class="btn small corner left" type="button" id="mapEditBack"><span class="px" data-px="< BACK"></span></button>
+    <h2 class="sheet-title" id="mapEditTitle"></h2>
+    <p class="msg" id="mapEditMsg" role="alert"></p>
+    <div id="mapEditBody"></div>
+  </section>
+
+  <!-- CHARACTERS LIST -->
+  <section class="screen" id="screen-characters" hidden>
+    <button class="btn small corner left" type="button" data-go="home"><span class="px" data-px="< BACK"></span></button>
+    <h2 class="heading px" data-px="CHARACTERS"></h2>
+    <div class="stack">
+      <button class="btn" id="newCharBtn" type="button"><span class="px" data-px="NEW CHARACTER"></span></button>
+      <button class="btn" id="importCharBtn" type="button"><span class="px" data-px="IMPORT CHARACTER"></span></button>
+      <input type="file" id="importFile" accept=".json,application/json" hidden aria-label="Character sheet file">
+      <p class="note" id="noChars">No characters yet.</p>
+      <p class="msg" id="listMsg" role="alert"></p>
+      <div class="char-list" id="charList"></div>
+      <h3 class="lbl" id="npcHead" hidden>NPCs</h3>
+      <div class="char-list" id="npcList"></div>
+    </div>
+  </section>
+
+  <!-- CHARACTER SHEET -->
+  <section class="screen sheet" id="screen-sheet" hidden>
+    <button class="btn small corner left" type="button" data-go="characters"><span class="px" data-px="< BACK"></span></button>
+    <h2 class="sheet-title" id="sheetTitle"></h2>
+    <p class="save-status" id="saveStatus" aria-live="polite"></p>
+    <button class="btn small" id="exportBtn" type="button">EXPORT SHEET</button>
+    <div class="tabs" id="tabs" role="tablist" aria-label="Character sheet sections"></div>
+    <div id="panels"></div>
+  </section>
+
+  <!-- ENCOUNTER PROMPT (in-app notification, shown over any screen) -->
+  <div class="enc-modal" id="encounterModal" role="dialog" aria-modal="true" aria-labelledby="encTitle" hidden>
+    <div class="enc-panel">
+      <div class="enc-top"><button class="btn small" id="encExit" type="button">EXIT</button></div>
+      <h2 class="enc-title" id="encTitle" tabindex="-1">An Encounter Has Begun!</h2>
+      <p class="enc-sub" id="encCampaign"></p>
+      <div id="encRows" style="display:flex;flex-direction:column;gap:.8rem"></div>
+      <p class="msg" id="encMsg" role="alert"></p>
+    </div>
+  </div>
+
+  <div class="enc-modal" id="skillModal" role="dialog" aria-modal="true" aria-labelledby="skillTitle" hidden>
+    <div class="enc-panel">
+      <h2 class="enc-title" id="skillTitle" tabindex="-1">Skill Check</h2>
+      <p class="enc-sub" id="skillWho"></p>
+      <div class="enc-row">
+        <label class="fld"><span class="lbl">Skill</span><select class="skill-sel" id="skillSel" aria-label="Skill"></select></label>
+        <div class="enc-name"><span id="skillModText"></span></div>
+        <div id="skillEt"></div>
+        <div class="enc-ctl">
+          <button class="btn small" id="skillRoll" type="button">ROLL D20</button>
+          <span class="lbl">or</span>
+          <input id="skillDie" type="number" inputmode="numeric" min="1" max="20" placeholder="d20" aria-label="Your d20 roll">
+          <button class="btn small" id="skillSet" type="button">SET ROLL</button>
+        </div>
+        <p class="skill-out" id="skillOut" role="status" aria-live="polite"></p>
+      </div>
+      <p class="note">A natural 1 takes off 5 and a natural 20 adds 5.</p>
+      <p class="msg" id="skillMsg" role="alert"></p>
+      <button class="btn" id="skillClose" type="button">CLOSE</button>
+    </div>
+  </div>
+
+  <div class="enc-modal" id="describeModal" role="dialog" aria-modal="true" aria-labelledby="describeTitle" hidden>
+    <div class="enc-panel">
+      <h2 class="enc-title" id="describeTitle" tabindex="-1">Describe Your Character</h2>
+      <div id="describeBody"></div>
+    </div>
+  </div>
+
+  <div class="enc-modal" id="etModal" role="dialog" aria-modal="true" aria-labelledby="etTitle" hidden>
+    <div class="enc-panel">
+      <h2 class="enc-title" id="etTitle" tabindex="-1">Explode Tokens</h2>
+      <div id="etBody"></div>
+    </div>
+  </div>
+
+  <div class="enc-modal" id="defendModal" role="dialog" aria-modal="true" aria-labelledby="defendTitle" hidden>
+    <div class="enc-panel">
+      <h2 class="enc-title" id="defendTitle" tabindex="-1">Under Attack</h2>
+      <div id="defendBody"></div>
+    </div>
+  </div>
+
+  <div class="enc-modal" id="comboModal" role="dialog" aria-modal="true" aria-labelledby="comboTitle" hidden>
+    <div class="enc-panel">
+      <h2 class="enc-title" id="comboTitle" tabindex="-1">Combo Attack</h2>
+      <div id="comboBody"></div>
+    </div>
+  </div>
+
+  <div class="enc-modal" id="actionsModal" role="dialog" aria-modal="true" aria-labelledby="actionsTitle" hidden>
+    <div class="enc-panel">
+      <h2 class="enc-title" id="actionsTitle" tabindex="-1">Actions</h2>
+      <div id="actionsList" class="actions-list"></div>
+      <div id="actionDetail" class="actions-detail" hidden>
+        <h3 class="sec" id="actionName"></h3>
+        <div class="skill-out" id="actionDesc"></div>
+        <button class="btn" id="actionBack" type="button">BACK</button>
+      </div>
+      <button class="btn" id="actionsClose" type="button">CLOSE</button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+<script src="vendor/supabase.js"></script>
+<script src="config.js"></script>
+<script src="engine.js"></script>
+<script src="backend.js"></script>
+<script src="rules.js"></script>
+<script src="spawndata.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
