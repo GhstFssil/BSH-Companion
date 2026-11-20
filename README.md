@@ -24,7 +24,7 @@ Free Supabase projects can be paused after a stretch of no use; restore the proj
 The Supabase JavaScript library (MIT license) is included in `vendor/` so the app works offline.
 
 ## Updating
-Version: 0.6 (`APP_VERSION` in `app.js`; it changes only when Ricky says so). Cache: `bloodsoup-v56` (`CACHE` in `sw.js`). Bump the cache on every release, or installed copies may keep showing the old files.
+The version is `APP_VERSION` in `app.js` (it changes only when Ricky says so) and the cache name is `CACHE` in `sw.js`. Bump the cache on every release, or installed copies may keep showing the old files.
 
 ## Files
 See `ARCHITECTURE.md` for what each file does.

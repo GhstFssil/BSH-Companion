@@ -30,9 +30,9 @@ Companion PWA for Ricky's homemade tabletop RPG, BLOODSOUP HELL. Don't edit this
 
 ## Shipping
 - Ship only when asked or at a natural stopping point. Ricky is careful with Netlify free credits, so batch changes.
-- `APP_VERSION` (app.js) changes only when Ricky says so; remind him periodically. The current Version and Cache values are in README.md (Updating).
+- `APP_VERSION` (app.js) changes only when Ricky says so; remind him periodically.
 - Bump `CACHE` in `sw.js` on every release. Use a distinct zip name per release (e.g. "BSH 0.6 rev2.zip"), because re-uploading an old copy once caused "All files already uploaded" confusion.
-- Ship checklist: bump cache; update the Version and Cache lines in README.md; zip the app folder (no node_modules); give Ricky `supabase/campaigns.sql` if the database changed; state clearly whether it must be re-run.
+- Ship checklist: bump cache; update README; zip the app folder (no node_modules); give Ricky `supabase/campaigns.sql` if the database changed; state clearly whether it must be re-run.
 
 ## Rules maintenance
 - After each release (or on request), suggest changes in one short list: rules to add (friction seen), trim (redundant/outdated/something you'd do anyway), and wording to tighten.
