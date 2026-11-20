@@ -9,3 +9,4 @@ Add a line with `echo '- ...' >> HISTORY.md`.
 - 2026-11-20 17:09 | main | HANDOFF.md is overwrite-only (old dated entries stay in git history); BACKLOG.md now Bugs/Ideas/Watch with checkboxes and the (who, date) format
 - 2026-11-20 17:09 | main | README.md: Supabase setup, Deploy, Updating and Files sections unified with Lifebrained wording (Version and Cache lines added; file list moved to ARCHITECTURE.md)
 - 2026-11-20 17:46 | main | README: removed the version and cache values (they live in app.js and sw.js); CLAUDE.md ship checklist says update README again, as before
+- 2026-11-20 17:59 | main | Version rules: by default every push to main that isn't docs-only bumps APP_VERSION and CACHE to the next version (0.6 -> 0.7, v56 -> v57), docs-only pushes never change the version unless Ricky says so (CLAUDE.md, README, ARCHITECTURE)

@@ -12,7 +12,7 @@
 - `supabase/schema.sql`: accounts and character tables and security rules.
 - `supabase/username-login.sql`: lets players log in with a username instead of an email.
 - `supabase/campaigns.sql`: campaigns, QM rules, linking characters to campaigns, NPCs, and encounters with initiative rolls (creator is QM, a campaign always keeps a QM: if the last QM leaves or their account is deleted a random player takes over and inherits the NPCs, only QMs remove players, change QMs, delete the campaign, create NPCs or show/hide them).
-- `sw.js`, `manifest.webmanifest`, icons: offline use and installing. `CACHE` in `sw.js` changes each release.
+- `sw.js`, `manifest.webmanifest`, icons: offline use and installing. `CACHE` in `sw.js` changes with every version bump.
 - `tests/`: Node scripts, see `tests/README.md`. `tools/build_artifact.py`: builds the single-file demo page.
 
 ## Backend (Supabase)
