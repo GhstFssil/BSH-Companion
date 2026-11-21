@@ -75,6 +75,7 @@ See `ARCHITECTURE.md` for what each file does.
 ## Rules page and version
 
 - **RULES** (center top of every screen) opens the rulebook, converted from `Rulebook_0.3.odt` into `rules.js`. The contents list is clickable. To update the rulebook, send a new .odt and it gets re-converted.
+- **GUIDE** opens the user guide (how to use the app), on the same dark-gray page with a clickable contents list. It has a button on the title page and the home screen, and replaces RULES at the top center while you are reading the rulebook (and RULES is there while you read the guide). The text lives in `USER_GUIDE.md`; run `python3 tools/build_guide.py` after editing it to rebuild `guide.js`. Edit the .md, never `guide.js`.
 - The app version shows at the bottom of the title page. It lives in `app.js` as `APP_VERSION` and only changes when Ricky asks.
 - **Weapons:** ticking Weapon on an item shows the rulebook's weapon properties (Type, Size/Style, Weight, Dmg Type, Range, Cost, CR, Attack Dmg, Effect). They are free text and travel with the item when it is given.
 - **Magic items:** ticking Magic shows Type, Attunement, Max Charges, Effect and a Spellbook checkbox. The Charges field on the item line appears only for magic items; it runs from 0 up to Max Charges (setting Max Charges fills it, lowering the max pulls it down). All of it travels with the item when it is given.

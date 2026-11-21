@@ -11,3 +11,4 @@ Add a line with `echo '- ...' >> HISTORY.md`.
 - 2026-11-20 17:46 | main | README: removed the version and cache values (they live in app.js and sw.js); CLAUDE.md ship checklist says update README again, as before
 - 2026-11-20 17:59 | main | Version rules: by default every push to main that isn't docs-only bumps APP_VERSION and CACHE to the next version (0.6 -> 0.7, v56 -> v57), docs-only pushes never change the version unless Ricky says so (CLAUDE.md, README, ARCHITECTURE)
 - 2026-11-20 18:02 | main | Version rule: BSH-Companion now uses whole numbers, starting at 1 on the next non-docs push to main (0.6 -> 1); cache stays a counter (v56 -> v57) (CLAUDE.md, HANDOFF)
+- 2026-11-20 20:34 | main, v1 | In-app user guide: USER_GUIDE.md -> guide.js (tools/build_guide.py), GUIDE screen/buttons (title, home, swaps with RULES on the rulebook); app version 0.6 -> 1, cache v57; tests: guideui.js added, button lists updated

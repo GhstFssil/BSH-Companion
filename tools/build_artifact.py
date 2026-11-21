@@ -16,5 +16,5 @@ j=h.index('<script src="vendor/supabase.js">'); k=h.index('</body>')
 rd=lambda f: open(f).read()
 app=re.sub(r"\n  if \('serviceWorker' in navigator\) \{.*?\n  \}\n","\n",rd('app.js'),flags=re.S)
 assert 'serviceWorker' not in app
-h=h[:j]+''.join('<script>%s</script>\n'%s for s in (rd('engine.js'),rd('backend.js'),rd('rules.js'),rd('spawndata.js'),app))+h[k:]
+h=h[:j]+''.join('<script>%s</script>\n'%s for s in (rd('engine.js'),rd('backend.js'),rd('rules.js'),rd('guide.js'),rd('spawndata.js'),app))+h[k:]
 open(S,'w').write(h); print(len(h))

@@ -1,5 +1,5 @@
 // Offline-first service worker for the app's own files. Bump CACHE when you ship changes.
-const CACHE = 'bloodsoup-v56';
+const CACHE = 'bloodsoup-v57';
 const ASSETS = [
   './',
   './index.html',
@@ -7,6 +7,7 @@ const ASSETS = [
   './engine.js',
   './backend.js',
   './rules.js',
+  './guide.js',
   './spawndata.js',
   './config.js',
   './vendor/supabase.js',

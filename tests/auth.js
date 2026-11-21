@@ -4,7 +4,7 @@ const { ok, done } = checker();
   let A = api(await boot());
   ok(A.vis().join() === 'start', 'opens on start after loading');
   ok(!A.$('modeNote').hidden && /Preview mode/.test(A.$('modeNote').textContent), 'local backend shows the preview-mode note');
-  ok([...A.d.querySelectorAll('#screen-start .btn')].filter((b) => !b.hidden && !/ERASE/.test(b.textContent)).length === 2, 'start has two main buttons (plus the preview-only erase button)');
+  ok([...A.d.querySelectorAll('#screen-start .btn')].filter((b) => !b.hidden && !/ERASE/.test(b.textContent)).length === 3, 'start has three main buttons: LOG IN, CREATE ACCOUNT, GUIDE (plus the preview-only erase button)');
   A.click(A.d.querySelector('[data-go="login"]')); await wait();
   ok(A.vis().join() === 'login', 'Log In -> login page');
   ok(['loginUser', 'loginPass'].every((id) => A.$(id)) && A.$('loginPass').type === 'password', 'login asks username + password (hidden)');

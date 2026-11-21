@@ -13,7 +13,7 @@ function buildHtml({ supabaseUrl } = {}) {
   } else {
     inline('vendor/supabase.js', ''); inline('config.js', '');
   }
-  inline('engine.js', read('engine.js')); inline('backend.js', read('backend.js')); inline('rules.js', read('rules.js')); inline('spawndata.js', read('spawndata.js')); inline('app.js', read('app.js'));
+  inline('engine.js', read('engine.js')); inline('backend.js', read('backend.js')); inline('rules.js', read('rules.js')); inline('guide.js', read('guide.js')); inline('spawndata.js', read('spawndata.js')); inline('app.js', read('app.js'));
   return html;
 }
 
@@ -51,7 +51,7 @@ function api(w) {
   const $ = (id) => d.getElementById(id);
   const a = {
     w, d, $,
-    vis: () => ['loading', 'start', 'login', 'create', 'home', 'campaigns', 'createcampaign', 'joincampaign', 'campaign', 'spawn', 'maps', 'mapedit', 'mapview', 'characters', 'sheet','options', 'rules', 'forgot', 'reset'].filter((s) => !$('screen-' + s).hidden),
+    vis: () => ['loading', 'start', 'login', 'create', 'home', 'campaigns', 'createcampaign', 'joincampaign', 'campaign', 'spawn', 'maps', 'mapedit', 'mapview', 'characters', 'sheet','options', 'rules', 'guide', 'forgot', 'reset'].filter((s) => !$('screen-' + s).hidden),
     click: (el) => el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })),
     setv: (el, v) => { el.value = v; el.dispatchEvent(new w.Event('input', { bubbles: true })); },
     submit: (id) => $(id).dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true })),

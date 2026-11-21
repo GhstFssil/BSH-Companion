@@ -148,7 +148,7 @@
   }
 
   /* ================= Routing ================= */
-  const SCREENS = ['loading', 'start', 'rules', 'login', 'forgot', 'reset', 'create', 'home', 'options', 'campaigns', 'createcampaign', 'joincampaign', 'campaign', 'spawn', 'maps', 'mapedit', 'mapview', 'characters', 'sheet'];
+  const SCREENS = ['loading', 'start', 'rules', 'guide', 'login', 'forgot', 'reset', 'create', 'home', 'options', 'campaigns', 'createcampaign', 'joincampaign', 'campaign', 'spawn', 'maps', 'mapedit', 'mapview', 'characters', 'sheet'];
   const LOGGED_IN_ONLY = ['home', 'options', 'campaigns', 'createcampaign', 'joincampaign', 'campaign', 'spawn', 'maps', 'mapedit', 'mapview', 'characters', 'sheet'];
   const ROUTE_SCREEN = { 'campaigns': 'campaigns', 'create-campaign': 'createcampaign', 'join-campaign': 'joincampaign' };
 
@@ -162,11 +162,11 @@
   const authInputs = [loginUser, loginPass, createName, createUser, createEmail, createPass, forgotWho, resetPass, resetPass2];
 
   // The app's version. Changed only when Ricky says so (not automatically).
-  const APP_VERSION = '0.6';
+  const APP_VERSION = '1';
   $('appVersion').textContent = 'v' + APP_VERSION;
   let lastRoute = 'start', sheetBack = null;
 
-  /* ================= Rules ================= */
+  /* ================= Rules and user guide ================= */
   let rulesBuilt = false;
   function renderRules() {
     const doc = $('rulesDoc');
@@ -176,7 +176,15 @@
       rulesBuilt = true;
     }
   }
-  $('rulesDoc').addEventListener('click', (e) => {
+  let guideBuilt = false;
+  function renderGuide() {
+    if (guideBuilt) return;
+    const G = window.BSH_GUIDE || { title: 'User Guide', html: '<p>The user guide could not be loaded.</p>' };
+    $('guideDoc').innerHTML = '<h1>' + G.title + '</h1>' + G.html;
+    guideBuilt = true;
+  }
+  // contents links and ^ CONTENTS links, for both the rulebook and the guide
+  const docClick = (e) => {
     const a = e.target.closest('a[data-goto]');
     if (!a) return;
     e.preventDefault();
@@ -185,8 +193,12 @@
     if (t.scrollIntoView) t.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
     if (!t.hasAttribute('tabindex')) t.setAttribute('tabindex', '-1');
     t.focus({ preventScroll: true });
-  });
-  $('rulesBack').addEventListener('click', () => go(lastRoute && lastRoute !== 'rules' ? lastRoute : state.user ? 'home' : 'start'));
+  };
+  $('rulesDoc').addEventListener('click', docClick);
+  $('guideDoc').addEventListener('click', docClick);
+  const docBack = () => go(lastRoute && lastRoute !== 'rules' && lastRoute !== 'guide' ? lastRoute : state.user ? 'home' : 'start');
+  $('rulesBack').addEventListener('click', docBack);
+  $('guideBack').addEventListener('click', docBack);
 
   function go(name) { location.hash = name; }
   const homeUrl = () => location.pathname + location.search;
@@ -207,14 +219,14 @@
     else if (raw.startsWith('mapview-')) { name = 'mapview'; [mapCid, mapViewId] = raw.slice(8).split('~'); }
     else if (raw.startsWith('spawnsheet-')) { name = 'sheet'; spawnSheetFor = raw.slice('spawnsheet-'.length); }
     else if (Object.prototype.hasOwnProperty.call(ROUTE_SCREEN, raw)) name = ROUTE_SCREEN[raw];
-    const known = ['start', 'rules', 'login', 'forgot', 'reset', 'create', 'home', 'options', 'campaigns', 'createcampaign', 'joincampaign', 'campaign', 'spawn', 'maps', 'mapedit', 'mapview', 'characters', 'sheet'].includes(name);
+    const known = ['start', 'rules', 'guide', 'login', 'forgot', 'reset', 'create', 'home', 'options', 'campaigns', 'createcampaign', 'joincampaign', 'campaign', 'spawn', 'maps', 'mapedit', 'mapview', 'characters', 'sheet'].includes(name);
     if (!known) name = 'start';
 
     const user = state.user;
     const loggedInOnly = LOGGED_IN_ONLY.includes(name);
     const titleWhileIn = user && name === 'start' && location.hash === '#start';   // logged-in players may visit the title screen on purpose
     if (name === 'reset' && !user) name = 'login';
-    if (user && !loggedInOnly && !titleWhileIn && name !== 'rules' && name !== 'reset') { name = 'home'; history.replaceState(null, '', '#home'); }
+    if (user && !loggedInOnly && !titleWhileIn && name !== 'rules' && name !== 'guide' && name !== 'reset') { name = 'home'; history.replaceState(null, '', '#home'); }
     if (!user && loggedInOnly) { name = 'start'; history.replaceState(null, '', homeUrl()); }
 
     let ch = null, viewOnly = null;
@@ -237,15 +249,17 @@
     if (screen === 'spawn') spawnCampaignId = campaignId;
     curCampaignId = screen === 'campaign' ? campaignId : curCampaignId && screen === 'sheet' ? curCampaignId : null;
     SCREENS.forEach((s) => { $('screen-' + s).hidden = s !== screen; });
-    if (screen !== 'rules') {
+    if (screen !== 'rules' && screen !== 'guide') {
       const prev = lastRoute;
       lastRoute = location.hash.replace('#', '') || 'start';
       // where a sheet's BACK goes: the campaign page if that is where you came from (kept while you stay on the sheet)
       if (screen === 'sheet') { if (/^campaign-/.test(prev)) sheetBack = prev; else if (!/^character-/.test(prev)) sheetBack = null; }
     }
-    document.documentElement.classList.toggle('on-rules', screen === 'rules'); document.body.classList.toggle('on-rules', screen === 'rules');
+    const onDoc = screen === 'rules' || screen === 'guide';   // the rulebook and the user guide share one look
+    document.documentElement.classList.toggle('on-rules', onDoc); document.body.classList.toggle('on-rules', onDoc);
     $('rulesBtn').hidden = screen === 'rules';
-    logoutBtn.hidden = !user || screen === 'start' || screen === 'rules';   // the title screen has its own LOG OUT
+    $('guideBtn').hidden = screen !== 'rules';   // on the rulebook, GUIDE sits where RULES is everywhere else
+    logoutBtn.hidden = !user || screen === 'start' || onDoc;   // the title screen has its own LOG OUT
     document.querySelectorAll('#screen-start [data-auth]').forEach((b) => { b.hidden = (b.dataset.auth === 'in') !== !!user; });
 
     if (screen === 'login' || screen === 'create') {
@@ -266,6 +280,7 @@
     if (screen === 'createcampaign') { $('campaignName').value = ''; $('campaignFormMsg').textContent = ''; $('campaignBtn').disabled = true; }
     if (screen === 'options') renderOptions();
     if (screen === 'rules') renderRules();
+    if (screen === 'guide') renderGuide();
     if (['campaigns', 'joincampaign', 'campaign'].includes(screen)) { renderCampaigns(); refreshCampaigns(); }
     if (screen === 'spawn') { spawnSig = ''; renderSpawnPage(); refreshCampaigns(); }
     if (screen === 'maps') renderMapList();

@@ -6,14 +6,14 @@
 - `index.html`, `app.js`: screens and behavior (UI).
 - `engine.js`: the character sheet math (a direct port of BSH_Skillsheet_3.2) and the rules and stat math (`BSH.ET`, `BSH.COMBAT`, `BSH.COMBO`).
 - `backend.js`: accounts and saving. One async API with two implementations: Supabase, and a device-only localStorage "local" backend (used when Supabase is not configured).
-- `rules.js`: the rulebook, converted from `Rulebook_0.3.odt`. `spawndata.js`: abilities, fighting styles and weapons for Spawn Character, copied from the rulebook.
+- `rules.js`: the rulebook, converted from `Rulebook_0.3.odt`. `guide.js`: the in-app user guide, generated from `USER_GUIDE.md` by `tools/build_guide.py` (don't edit it by hand). `spawndata.js`: abilities, fighting styles and weapons for Spawn Character, copied from the rulebook.
 - `config.js`: Supabase URL + publishable key.
 - `vendor/supabase.js`: the Supabase browser library (MIT, see `vendor/supabase-LICENSE.txt`).
 - `supabase/schema.sql`: accounts and character tables and security rules.
 - `supabase/username-login.sql`: lets players log in with a username instead of an email.
 - `supabase/campaigns.sql`: campaigns, QM rules, linking characters to campaigns, NPCs, and encounters with initiative rolls (creator is QM, a campaign always keeps a QM: if the last QM leaves or their account is deleted a random player takes over and inherits the NPCs, only QMs remove players, change QMs, delete the campaign, create NPCs or show/hide them).
 - `sw.js`, `manifest.webmanifest`, icons: offline use and installing. `CACHE` in `sw.js` changes with every version bump.
-- `tests/`: Node scripts, see `tests/README.md`. `tools/build_artifact.py`: builds the single-file demo page.
+- `tests/`: Node scripts, see `tests/README.md`. `tools/build_artifact.py`: builds the single-file demo page. `tools/build_guide.py`: rebuilds `guide.js`.
 
 ## Backend (Supabase)
 - `backend.js` keeps the Supabase and local implementations in step; the API is the same for both.
@@ -33,7 +33,8 @@ Hosted on Netlify (https://verdant-stardust-605101.netlify.app). Ricky deploys b
 See `tests/README.md` (setup, run commands, what each file covers). Rules for database changes are in CLAUDE.md (Testing).
 
 ## Docs
-- `README.md`: what it is, deploy, Supabase setup, updating, files, and the user guide for each feature.
+- `README.md`: what it is, deploy, Supabase setup, updating, files, and the feature notes for each feature.
+- `USER_GUIDE.md`: the player-facing user guide, shown in the app under GUIDE (rebuild `guide.js` after editing).
 - `CLAUDE.md`: working rules for sessions (Ricky approves edits).
 - `ARCHITECTURE.md`: this file.
 - `HANDOFF.md`: current state; overwritten each time.

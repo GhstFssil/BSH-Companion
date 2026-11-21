@@ -1,5 +1,5 @@
 # Handoff
-Last updated 2026-11-20. Overwrite each time; keep under 40 lines. Change record: HISTORY.md (don't read unless asked).
+Last updated 2026-11-20 (evening). Overwrite each time; keep under 40 lines. Change record: HISTORY.md (don't read unless asked).
 
 ## Goal
 BLOODSOUP HELL Companion: one PWA for Ricky's homemade tabletop RPG, with Supabase accounts, campaigns, encounters and NPCs.
@@ -10,10 +10,11 @@ BLOODSOUP HELL Companion: one PWA for Ricky's homemade tabletop RPG, with Supaba
   - Crits and absorbed hits (see ARCHITECTURE.md, Rules as implemented).
   - Combo Attacks in the Actions menu, with the Leader/Finisher flow. New RPCs: `set_combo`, `cancel_combo`, `combo_leader_attack`, `cancel_combo_attack`; changed `start_attack`, `resolve_attack`, `start_turn`.
 - 2026-11-20: app pushed to GitHub (`GhstFssil/BSH-Companion`, `main`) from the 0.6 build; tests moved into `tests/`; docs aligned with the other Ricky repos (ARCHITECTURE.md, HISTORY.md, common CLAUDE.md sections).
-- Tests at the last full run (2026-11-20): every file passed (SQL 355, combat 94, and the rest).
+- 2026-11-20: **user guide added** (version 1, cache `bloodsoup-v57`; no database change, so `campaigns.sql` need not be re-run). `USER_GUIDE.md` is the source; `python3 tools/build_guide.py` builds `guide.js`. GUIDE button on the title page and home screen; on the rulebook the centre button becomes GUIDE (and RULES shows on the guide). Needs Ricky to upload the new zip to Netlify.
+- Tests at the last full run (2026-11-20): every file passed, including new `guideui.js`.
 
 ## In progress
-- Nothing mid-flight. No unreleased changes; the last shipped build is 0.6, identical to `main`.
+- Nothing mid-flight. `main` is version 1 (guide); the last build Ricky deployed is 0.6 rev2 until he uploads the new zip.
 
 ## Decisions
 - Design assumptions Ricky has not explicitly reviewed:
@@ -24,10 +25,11 @@ BLOODSOUP HELL Companion: one PWA for Ricky's homemade tabletop RPG, with Supaba
   - If both combo attacks miss, the Finisher rerolls a plain d12 and keeps the better roll.
 
 ## Next steps
-1. Ask Ricky whether `campaigns.sql` was run and 0.6 rev2 is live, and about any bugs from real play.
+1. Ask Ricky whether `campaigns.sql` was run and 0.6 rev2 is live (and that version 1 is deployed), and about any bugs from real play. Ask him to read the guide on his phone and flag wrong or missing wording (TOTEM/ABILITIES tabs are only named; install steps are generic).
 2. See BACKLOG.md.
 
 ## Gotchas
-- Versions become whole numbers from the next non-docs push to `main` (0.6 -> 1). Next cache is `bloodsoup-v57`.
+- Versions are whole numbers now. Next non-docs push makes version 2 and cache `bloodsoup-v58`.
+- After editing `USER_GUIDE.md`, rebuild `guide.js` or the app shows the old text. In `USER_GUIDE.md` write `&lt;x&gt;` for angle-bracket placeholders.
 - Combos and crits have only been tested in simulation, not in real play.
 - Ricky still had to run `campaigns.sql` in Supabase and upload the 0.6 zip to Netlify; confirm he did both if bugs get reported.
