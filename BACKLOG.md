@@ -15,5 +15,6 @@ _none logged yet_
 - [ ] Notes tab alongside rules and user guide. Can create different pages (recommended for different campaigns).
 - [ ] Characters sidebar for campaigns (two separate ones for Dead and Inactive).
 - [ ] Campaign codex that auto records mobs and items that have been discovered.
+- [ ] Manual damage application in campaigns with dice roll logic.
       
 ## Watch (untested)
