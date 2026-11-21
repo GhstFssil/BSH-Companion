@@ -16,5 +16,6 @@ _none logged yet_
 - [ ] Characters sidebar for campaigns (two separate ones for Dead and Inactive).
 - [ ] Campaign codex that auto records mobs and items that have been discovered.
 - [ ] Manual damage application in campaigns with dice roll logic.
+- [ ] Make sure item names are always fully visible.
       
 ## Watch (untested)
