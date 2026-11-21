@@ -13,3 +13,4 @@ Add a line with `echo '- ...' >> HISTORY.md`.
 - 2026-11-20 18:02 | main | Version rule: BSH-Companion now uses whole numbers, starting at 1 on the next non-docs push to main (0.6 -> 1); cache stays a counter (v56 -> v57) (CLAUDE.md, HANDOFF)
 - 2026-11-20 20:34 | main, v1 | In-app user guide: USER_GUIDE.md -> guide.js (tools/build_guide.py), GUIDE screen/buttons (title, home, swaps with RULES on the rulebook); app version 0.6 -> 1, cache v57; tests: guideui.js added, button lists updated
 - 2026-11-20 21:39 | main | Docs: shipping means pushing to main as the next version; never give zips or artifacts unless asked
+- 2026-11-20 21:48 | main | Added .github/workflows/release.yml: every non-docs push to main publishes a vN GitHub release (app zip plus SQL script); docs updated

@@ -21,7 +21,7 @@
 - Campaigns poll every 5 s. Encounter state (`attack`, `lastAttack`, `combos`) lives in `campaigns.encounter` jsonb.
 
 ## Deploy
-Hosted on Netlify (https://verdant-stardust-605101.netlify.app). Ricky publishes to Netlify himself; Claude does not deploy. Release steps are in CLAUDE.md.
+Hosted on Netlify (https://verdant-stardust-605101.netlify.app). Ricky publishes to Netlify himself; Claude does not deploy. `.github/workflows/release.yml` publishes a `vN` release (N = `APP_VERSION`) with the app zip and `campaigns.sql` on every non-docs push to `main`; docs, tests and tools changes make none. Release steps are in CLAUDE.md.
 
 ## Rules as implemented
 - Attack = d12 + SA (natural 1 gives -5, natural 12 gives +5). Hit if total > target DA. Damage = max(0, Attack Pwr - AC). No chip damage: a hit that AC absorbs is still a hit, with 0 damage.

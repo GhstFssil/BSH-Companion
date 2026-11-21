@@ -24,7 +24,7 @@ Free Supabase projects can be paused after a stretch of no use; restore the proj
 The Supabase JavaScript library (MIT license) is included in `vendor/` so the app works offline.
 
 ## Updating
-The version is `APP_VERSION` in `app.js` and the cache name is `CACHE` in `sw.js`. Both are bumped with every push to `main` except a docs-only one, or installed copies may keep showing the old files.
+The version is `APP_VERSION` in `app.js` and the cache name is `CACHE` in `sw.js`. Both are bumped with every push to `main` except a docs-only one, or installed copies may keep showing the old files. Each such push also makes a GitHub release with the app zip.
 
 ## Files
 See `ARCHITECTURE.md` for what each file does.
