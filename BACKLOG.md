@@ -18,5 +18,6 @@ _none logged yet_
 - [ ] Manual damage application in campaigns with dice roll logic.
 - [ ] Make sure item names and descriptions are always fully visible.
 - [ ] Compare character stats function.
-      
+- [ ] Ability to add custom actions.
+
 ## Watch (untested)
