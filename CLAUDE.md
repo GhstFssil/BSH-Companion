@@ -22,18 +22,18 @@ Companion PWA for Ricky's homemade tabletop RPG, BLOODSOUP HELL. Don't edit this
 - A database change means updating three things together: `supabase/campaigns.sql`, the Supabase branch of `backend.js` (and its local-backend twin), and `tests/mock.js`. Add a case to `tests/sql.mjs`.
 
 ## Project
-- Plain-JS PWA, hash-routed, no build step. Hosted on Netlify (https://verdant-stardust-605101.netlify.app); Ricky deploys by uploading a zip (or from this repo); Claude does not deploy.
+- Plain-JS PWA, hash-routed, no build step. Hosted on Netlify (https://verdant-stardust-605101.netlify.app); Ricky publishes to Netlify himself; Claude does not deploy.
 - `backend.js` has two implementations, Supabase and a localStorage "local" backend. Keep both in step.
 - `supabase/campaigns.sql` is idempotent. Ricky re-runs it in the Supabase SQL editor after any database change. Always tell him whether it must be re-run.
 - Only the publishable Supabase key may go in `config.js`. Never the secret/service_role key. Don't belabor confirmations about the publishable key.
-- `tools/build_artifact.py [out.html]` builds the single-file demo page Ricky previews as a Claude artifact (https://claude.ai/artifact/2qcasGSVxcbuwHbWt1gqGA). Optional; republishing is free.
+- `tools/build_artifact.py [out.html]` builds the single-file demo page Ricky previews as a Claude artifact (https://claude.ai/artifact/2qcasGSVxcbuwHbWt1gqGA). Only when Ricky asks.
 
 ## Shipping
-- Ship only when asked or at a natural stopping point. Ricky is careful with Netlify free credits, so batch changes.
+- Ship/publish means pushing to `main` as the next version (if applicable), per the rules below. Ship only when asked or at a natural stopping point. Ricky is careful with Netlify free credits, so batch changes.
+- Never give Ricky zips or artifacts unless he asks. He handles Netlify himself once the push is on `main`.
 - By default, every push to `main` that isn't docs-only bumps `APP_VERSION` (app.js) to the next whole number and `CACHE` (sw.js) with it (`bloodsoup-v56` -> `bloodsoup-v57`), in that same push, unless Ricky says otherwise. The next such push makes the version 1 (0.6 -> 1), then 2, 3 and so on.
 - Docs-only pushes (only `.md` files) never change the version unless Ricky explicitly says so.
-- Use a distinct zip name per release (e.g. "BSH 0.6 rev2.zip"), because re-uploading an old copy once caused "All files already uploaded" confusion.
-- Ship checklist: bump cache; update README; zip the app folder (no node_modules); give Ricky `supabase/campaigns.sql` if the database changed; state clearly whether it must be re-run.
+- Ship checklist: bump cache; update README; give Ricky `supabase/campaigns.sql` if the database changed; state clearly whether it must be re-run.
 
 ## Rules maintenance
 - After each release (or on request), suggest changes in one short list: rules to add (friction seen), trim (redundant/outdated/something you'd do anyway), and wording to tighten.
