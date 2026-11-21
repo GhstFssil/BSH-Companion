@@ -30,7 +30,7 @@ Companion PWA for Ricky's homemade tabletop RPG, BLOODSOUP HELL. Don't edit this
 
 ## Shipping
 - Ship only when asked or at a natural stopping point. Ricky is careful with Netlify free credits, so batch changes.
-- By default, every push to `main` that isn't docs-only bumps `APP_VERSION` (app.js) to the next version (0.6 -> 0.7) and `CACHE` (sw.js) with it (`bloodsoup-v56` -> `bloodsoup-v57`), in that same push, unless Ricky says otherwise.
+- By default, every push to `main` that isn't docs-only bumps `APP_VERSION` (app.js) to the next whole number and `CACHE` (sw.js) with it (`bloodsoup-v56` -> `bloodsoup-v57`), in that same push, unless Ricky says otherwise. The next such push makes the version 1 (0.6 -> 1), then 2, 3 and so on.
 - Docs-only pushes (only `.md` files) never change the version unless Ricky explicitly says so.
 - Use a distinct zip name per release (e.g. "BSH 0.6 rev2.zip"), because re-uploading an old copy once caused "All files already uploaded" confusion.
 - Ship checklist: bump cache; update README; zip the app folder (no node_modules); give Ricky `supabase/campaigns.sql` if the database changed; state clearly whether it must be re-run.

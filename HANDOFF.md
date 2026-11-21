@@ -28,6 +28,6 @@ BLOODSOUP HELL Companion: one PWA for Ricky's homemade tabletop RPG, with Supaba
 2. See BACKLOG.md.
 
 ## Gotchas
-- Next cache is `bloodsoup-v57`.
+- Versions become whole numbers from the next non-docs push to `main` (0.6 -> 1). Next cache is `bloodsoup-v57`.
 - Combos and crits have only been tested in simulation, not in real play.
 - Ricky still had to run `campaigns.sql` in Supabase and upload the 0.6 zip to Netlify; confirm he did both if bugs get reported.
