@@ -17,5 +17,6 @@ _none logged yet_
 - [ ] Campaign codex that auto records mobs and items that have been discovered.
 - [ ] Manual damage application in campaigns with dice roll logic.
 - [ ] Make sure item names and descriptions are always fully visible.
+- [ ] Compare character stats function.
       
 ## Watch (untested)
