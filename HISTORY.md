@@ -14,3 +14,4 @@ Add a line with `echo '- ...' >> HISTORY.md`.
 - 2026-11-20 20:34 | main, v1 | In-app user guide: USER_GUIDE.md -> guide.js (tools/build_guide.py), GUIDE screen/buttons (title, home, swaps with RULES on the rulebook); app version 0.6 -> 1, cache v57; tests: guideui.js added, button lists updated
 - 2026-11-20 21:39 | main | Docs: shipping means pushing to main as the next version; never give zips or artifacts unless asked
 - 2026-11-20 21:48 | main | Added .github/workflows/release.yml: every non-docs push to main publishes a vN GitHub release (app zip plus SQL script); docs updated
+- 2026-11-20 22:06 | main | Docs: all work goes on next; publish merges main into next, bumps the version if not docs-only, then pushes next to main

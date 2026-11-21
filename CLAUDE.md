@@ -29,10 +29,10 @@ Companion PWA for Ricky's homemade tabletop RPG, BLOODSOUP HELL. Don't edit this
 - `tools/build_artifact.py [out.html]` builds the single-file demo page Ricky previews as a Claude artifact (https://claude.ai/artifact/2qcasGSVxcbuwHbWt1gqGA). Only when Ricky asks.
 
 ## Shipping
-- Ship/publish means pushing to `main` as the next version (if applicable), per the rules below. Ship only when asked or at a natural stopping point. Ricky is careful with Netlify free credits, so batch changes.
+- Interactive work goes on `next`; agents never work on `main`. Publish only when Ricky says so: merge `main` into `next`, bump the version (unless docs-only), then push `next` to `main`. Ricky is careful with Netlify free credits, so batch changes.
 - Never give Ricky zips or artifacts unless he asks. The release workflow (`.github/workflows/release.yml`) turns each non-docs push into a GitHub release with the zip; he downloads it and handles Netlify himself.
 - By default, every push to `main` that isn't docs-only bumps `APP_VERSION` (app.js) to the next whole number and `CACHE` (sw.js) with it (`bloodsoup-v56` -> `bloodsoup-v57`), in that same push, unless Ricky says otherwise. The next such push makes the version 1 (0.6 -> 1), then 2, 3 and so on.
-- Docs-only pushes (only `.md` files) never change the version unless Ricky explicitly says so.
+- Docs-only pushes (only `.md` files) never change the version unless Ricky explicitly says so. They go straight to `main` by default, then merge `main` into `next`.
 - Ship checklist: bump cache; update README; give Ricky `supabase/campaigns.sql` if the database changed; state clearly whether it must be re-run.
 
 ## Rules maintenance
