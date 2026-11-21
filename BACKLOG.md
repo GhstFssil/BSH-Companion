@@ -10,8 +10,10 @@ _none logged yet_
 - [ ] Fill in the blank ability descriptions for Gary's Meat Matron and Spell Duelist.
 - [ ] A button on the Characters page to create an NPC from scratch.
 - [ ] Automate Tracking's "next hit is critical" combo bonus (currently text only).
-- [ ] Consider deploying to Netlify from this repo, if Ricky wants Git-based deploys (mind the free build credits).
-
+- [ ] Advantage and disadvantage on rolls. Stacks up to 3.
+- [ ] Ability to create mobs and boss monsters. Apply settings similar to character sheet and a variation rate, then QM can generate them into the campaign.
+- [ ] Notes tab alongside rules and user guide. Can create different pages (recommended for different campaigns).
+- [ ] Characters sidebar for campaigns (two separate ones for Dead and Inactive).
+- [ ] Campaign codex that auto records mobs and items that have been discovered.
+      
 ## Watch (untested)
-- [ ] Confirm 0.6 rev2 is live (`campaigns.sql` run, zip deployed) and fix anything found in real play, especially Combo Attacks and crits.
-- [ ] Review the combo design assumptions in HANDOFF.md (Decisions) with Ricky.
