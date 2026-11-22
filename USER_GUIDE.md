@@ -48,7 +48,11 @@ Sheets save automatically. The sheet has nine tabs:
 
 **Tracking HP and other points.** HP remaining is editable right on the sheet. AP, SP and EP have "remaining" boxes on the STATS tab (leave blank for full). The **Damage/Healing** box with **ACCEPT** adds its number to HP remaining: positive heals, negative hurts.
 
-**Items.** Tap an item to open it. You can change its quantity (**-1 / +1**), put it in your **LEFT HAND** or **RIGHT HAND** (one item per hand), or wear it on your **BODY** (only items ticked Wearable). Tick **Weapon** to get weapon fields (Type, Size, Weight, Damage Type, Range, Cost, CR, Attack Dmg, Effect) and **Magic** for magic fields (Type, Attunement, Max Charges, Effect, Spellbook). **GIVE** passes an item to another character in your campaign.
+**Items.** Tap an item to open it. You can change its quantity (**-1 / +1**), put it in your **LEFT HAND** or **RIGHT HAND** (one item per hand), or wear it on your **BODY** (only items ticked Wearable). Tick **Weapon** to get weapon fields (Type, Size, Weight, CR, Load Cost, Ammo, Effect, **Two-handed**, **Loaded**) and its **Attacks** list, and **Magic** for magic fields (Type, Attunement, Max Charges, Effect, Spellbook). **GIVE** passes an item to another character in your campaign.
+
+**Attacks.** Every attack has a name, a cost (such as `2 AP`), an Attack Dmg formula, a range, a damage type and an effect. Your character's own attacks are on the ABILITIES tab (every character starts with **Unarmed Strike**) and are always in the Actions menu. A weapon's attacks are on its item card, under **ADD ATTACK**; they appear in the Actions menu only while the weapon is in your hand, and a **Two-handed** weapon must be in both hands. Older weapons were converted to one attack named after the weapon.
+
+**Loading.** Give a weapon a **Load Cost** (such as `5 AP`) and, if it uses ammunition, the **Ammo** item's name (such as `Crossbow Bolt`). While it is in your hand, the Actions menu has **Load: &lt;weapon&gt;**: it spends the cost, uses up 1 of that ammo and marks the weapon loaded, all at once. Tick **Needs loading** on any attack that fires it: that attack shows **LOAD FIRST** until you load, and making the attack empties the weapon again. Loading is refused, with nothing spent, if you have none of the ammo left. A weapon stays loaded until it is fired.
 
 **Item buffs.** Each item has an ITEM BUFFS card: pick a talent or skill, enter an amount (negatives allowed), then tick **Hold** (active while in a hand) and/or **Wear** (active on the body). If neither is ticked, the buff is active whenever you carry the item.
 
@@ -86,7 +90,7 @@ When the QM starts an encounter, a popup appears on everyone's device: **An Enco
 **Spending points.** In an encounter, each action's cost box on the Actions card becomes a button. Tap it to spend the AP or SP. You can't spend more than you have.
 
 **Attacking.**
-1. Tap the cost box on **Unarmed Strike** or an **Attack: &lt;weapon&gt;** row.
+1. Tap the cost box on one of your attacks (such as **Unarmed Strike**) or a held weapon's attack (**Attack: &lt;weapon&gt;**, or **&lt;weapon&gt;: &lt;attack&gt;**).
 2. Pick a target.
 3. Tap **ROLL D12** (or type your own roll), then **ATTACK WITH MY ROLL**.
 
@@ -111,6 +115,7 @@ Everything above, plus:
 **Running a campaign**
 - **MAKE QM / REMOVE QM** on any member, and removing players. A campaign always keeps at least one QM: if the last one leaves, a random player takes over.
 - **DELETE CAMPAIGN** (second tap to confirm). Its NPCs are kept, not deleted.
+- **Changing a player's items.** Open any character's sheet in your campaign: the ITEMS tab is editable for you (everything else stays read-only). Changes save on their own, and the player gets a short popup saying the QM changed their items.
 
 **Encounters**
 - **START ENCOUNTER** and **END ENCOUNTER**.

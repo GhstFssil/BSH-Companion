@@ -72,7 +72,8 @@ function createMock() {
           wearable: it.wearable === true || it.wearable === 'true', weapon: it.weapon === true || it.weapon === 'true', magic: it.magic === true || it.magic === 'true',
           weaponProps: it.weaponProps && typeof it.weaponProps === 'object' ? it.weaponProps : {},
           magicProps: it.magicProps && typeof it.magicProps === 'object' ? it.magicProps : {},
-          buffs: Array.isArray(it.buffs) && it.buffs.length <= 30 ? it.buffs : [] } });
+          buffs: Array.isArray(it.buffs) && it.buffs.length <= 30 ? it.buffs : [],
+          twoHanded: it.twoHanded === true || it.twoHanded === 'true', attacks: Array.isArray(it.attacks) && it.attacks.length <= 20 ? it.attacks : [] } });
         return send(204);
       }
       if (p === '/rest/v1/item_gifts') {
@@ -210,6 +211,45 @@ function createMock() {
         const v = (t.data || {}).vitals || {};
         t.data = Object.assign({}, t.data, { vitals: Object.assign({}, v, { damage: (Number(v.damage) || 0) + body.p_amount }) });
         return send(204);
+      }
+      if (p === '/rest/v1/rpc/set_items' || p === '/rest/v1/rpc/load_weapon' || p === '/rest/v1/rpc/set_loaded') {
+        if (!me) return send(401, { message: 'JWT required' });
+        const P = (message) => send(400, { code: 'P0001', message });
+        const c = db.characters.find((x) => x.id === body.p_character);
+        if (p.endsWith('set_items') && (!Array.isArray(body.p_items) || body.p_items.length > 300)) return P('That item list is not valid.');
+        if (!c || !c.campaign_id) return P('That character is not in a campaign.');
+        const g = db.campaigns.find((x) => x.id === c.campaign_id);
+        const qm = db.members.some((m) => m.campaign_id === c.campaign_id && m.user_id === me && m.role === 'qm');
+        const items = JSON.parse(JSON.stringify(Array.isArray((c.data || {}).items) ? c.data.items : []));
+        const done = (why, extra) => { const stamp = { at: crypto.randomUUID(), by: me, why }; c.data = Object.assign({}, c.data, extra, { items: extra && extra.items || items, itemsEdit: stamp }); return stamp; };
+        if (p.endsWith('set_items')) {
+          if (!qm) return P('Only a QM can change another character\'s items.');
+          return send(200, done('qm', { items: body.p_items }));
+        }
+        if (p.endsWith('load_weapon')) {
+          if (typeof body.p_ap !== 'number' || body.p_ap < -1000 || body.p_ap > 100000) return P('That number is not valid.');
+          if (c.owner !== me && !qm) return P('You can only load weapons for your own characters.');
+          if (!g || !g.encounter) return P('Weapons can only be loaded during an encounter.');
+          const w = items.find((x) => x && x.uid === body.p_item && x.weapon === true);
+          if (!w) return P('That weapon is gone.');
+          if (w.loaded === true) return P('That weapon is already loaded.');
+          const ammo = String((w.weaponProps && w.weaponProps.ammo) || '').trim();
+          if (ammo) {
+            const qOf = (x) => (typeof x.qty === 'number' ? x.qty : x.qty == null || x.qty === '' ? 1 : 0);
+            const a = items.find((x) => x && x !== w && String(x.name || '').trim().toLowerCase() === ammo.toLowerCase() && qOf(x) >= 1);
+            if (!a) return P('No ' + ammo + ' left to load.');
+            a.qty = qOf(a) - 1;
+          }
+          w.loaded = true;
+          const stamp = done('load', { vitals: Object.assign({}, (c.data || {}).vitals, { apRemaining: body.p_ap }) });
+          return send(200, { items, itemsEdit: stamp });
+        }
+        if (c.owner !== me && !qm) return P('You can only change your own characters.');
+        const w = items.find((x) => x && x.uid === body.p_item);
+        if (!w) return P('That weapon is gone.');
+        w.loaded = !!body.p_loaded;
+        const stamp = done(body.p_loaded ? 'load' : 'fire');
+        return send(200, { items, itemsEdit: stamp });
       }
       if (p === '/rest/v1/rpc/set_vital' || p === '/rest/v1/rpc/start_turn') {
         if (!me) return send(401, { message: 'JWT required' });
@@ -558,6 +598,10 @@ function createMock() {
           const prev = i >= 0 ? db.characters[i] : null;
           if (prev && prev.is_npc && (body.campaign_id || null) !== prev.campaign_id) return send(400, { code: 'P0001', message: 'An NPC stays in its campaign.' });
           if ('is_npc' in body || 'npc_visible' in body) return send(403, { code: '42501', message: 'permission denied for table characters' });
+          if (prev && JSON.stringify((prev.data || {}).itemsEdit || null) !== JSON.stringify((body.data || {}).itemsEdit || null)) {   // trigger protect_items
+            body.data = Object.assign({}, body.data, { items: (prev.data || {}).items || [] });
+            if ((prev.data || {}).itemsEdit) body.data.itemsEdit = prev.data.itemsEdit; else delete body.data.itemsEdit;
+          }
           const row = { id: body.id, owner: me, data: body.data, campaign_id: body.campaign_id || null, is_npc: prev ? prev.is_npc : false, npc_visible: prev ? prev.npc_visible : false, npc_sheet_hidden: prev ? !!prev.npc_sheet_hidden : false, created_at: i >= 0 ? db.characters[i].created_at : new Date().toISOString(), updated_at: new Date().toISOString() };
           if (i >= 0) db.characters[i] = row; else db.characters.push(row);
           return send(201);

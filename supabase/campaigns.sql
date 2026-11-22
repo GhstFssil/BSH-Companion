@@ -487,7 +487,9 @@ begin
           'magic',    coalesce(p_item->>'magic', 'false') = 'true',
           'magicProps', case when jsonb_typeof(p_item->'magicProps') = 'object' and length(p_item->>'magicProps') <= 3000 then p_item->'magicProps' else '{}'::jsonb end,
           'weaponProps', case when jsonb_typeof(p_item->'weaponProps') = 'object' and length(p_item->>'weaponProps') <= 3000 then p_item->'weaponProps' else '{}'::jsonb end,
-          'buffs',    case when jsonb_typeof(p_item->'buffs') = 'array' and jsonb_array_length(p_item->'buffs') <= 30 then p_item->'buffs' else '[]'::jsonb end));
+          'buffs',    case when jsonb_typeof(p_item->'buffs') = 'array' and jsonb_array_length(p_item->'buffs') <= 30 then p_item->'buffs' else '[]'::jsonb end,
+          'twoHanded', coalesce(p_item->>'twoHanded', 'false') = 'true',
+          'attacks',  case when jsonb_typeof(p_item->'attacks') = 'array' and jsonb_array_length(p_item->'attacks') <= 20 and length(p_item->>'attacks') <= 8000 then p_item->'attacks' else '[]'::jsonb end));
 end;
 $$;
 
@@ -1646,3 +1648,119 @@ $$;
 drop trigger if exists clear_tokens_with_encounter_trg on public.campaigns;
 create trigger clear_tokens_with_encounter_trg after update of encounter on public.campaigns
   for each row execute function public.clear_tokens_with_encounter();
+
+-- ================= Items changed by others (QM edits, loading and firing weapons) =================
+-- data.itemsEdit = { at, by, why } is stamped by set_items (why 'qm'), load_weapon ('load') and set_loaded ('load' / 'fire').
+-- An owner's ordinary save that carries an older stamp keeps the stored items, so a stale autosave cannot undo those changes;
+-- the owner's device then picks up the new items on its next poll (and shows a popup for a QM edit).
+create or replace function public.protect_items()
+returns trigger
+language plpgsql security definer set search_path = public
+as $$
+begin
+  if coalesce(current_setting('bsh.items_rpc', true), '') = '1' then return new; end if;
+  if (old.data->'itemsEdit') is distinct from (new.data->'itemsEdit') then
+    new.data := jsonb_set(coalesce(new.data, '{}'::jsonb), '{items}', coalesce(old.data->'items', '[]'::jsonb));
+    if old.data ? 'itemsEdit' then new.data := jsonb_set(new.data, '{itemsEdit}', old.data->'itemsEdit');
+    else new.data := new.data - 'itemsEdit'; end if;
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists protect_items_trg on public.characters;
+create trigger protect_items_trg before update on public.characters
+  for each row execute function public.protect_items();
+
+-- A QM replaces the item list of any character in their campaign.
+create or replace function public.set_items(p_character uuid, p_items jsonb)
+returns jsonb
+language plpgsql security definer set search_path = public
+as $$
+declare c record; stamp jsonb;
+begin
+  if auth.uid() is null then raise exception 'Sign in first.'; end if;
+  if p_items is null or jsonb_typeof(p_items) <> 'array' or jsonb_array_length(p_items) > 300 or octet_length(p_items::text) > 400000 then
+    raise exception 'That item list is not valid.';
+  end if;
+  select campaign_id into c from public.characters where id = p_character for update;
+  if not found or c.campaign_id is null then raise exception 'That character is not in a campaign.'; end if;
+  if not public.is_campaign_qm(c.campaign_id) then raise exception 'Only a QM can change another character''s items.'; end if;
+  stamp := jsonb_build_object('at', gen_random_uuid()::text, 'by', auth.uid(), 'why', 'qm');
+  perform set_config('bsh.items_rpc', '1', true);
+  update public.characters set data = jsonb_set(jsonb_set(coalesce(data, '{}'::jsonb), '{items}', p_items), '{itemsEdit}', stamp) where id = p_character;
+  return stamp;
+end;
+$$;
+
+-- Load: in one step, spend the load's AP (p_ap is the AP left afterwards, worked out by the app as set_vital takes it),
+-- take 1 of the weapon's ammo (an item with that name, any case; none needed if the weapon names no ammo) and mark it loaded.
+create or replace function public.load_weapon(p_character uuid, p_item text, p_ap numeric)
+returns jsonb
+language plpgsql security definer set search_path = public
+as $$
+declare
+  c record; items jsonb; e record; wi int; ai int; aq numeric; q numeric; it jsonb; ammo text; stamp jsonb;
+begin
+  if auth.uid() is null then raise exception 'Sign in first.'; end if;
+  if p_ap is null or p_ap < -1000 or p_ap > 100000 then raise exception 'That number is not valid.'; end if;
+  select owner, campaign_id, data into c from public.characters where id = p_character for update;
+  if not found or c.campaign_id is null then raise exception 'That character is not in a campaign.'; end if;
+  if c.owner is distinct from auth.uid() and not public.is_campaign_qm(c.campaign_id) then
+    raise exception 'You can only load weapons for your own characters.';
+  end if;
+  if (select encounter from public.campaigns where id = c.campaign_id) is null then raise exception 'Weapons can only be loaded during an encounter.'; end if;
+  items := case when jsonb_typeof(c.data->'items') = 'array' then c.data->'items' else '[]'::jsonb end;
+  for e in select value, ordinality - 1 as i from jsonb_array_elements(items) with ordinality loop
+    if wi is null and e.value->>'uid' = p_item and coalesce(e.value->>'weapon', 'false') = 'true' then wi := e.i; end if;
+  end loop;
+  if wi is null then raise exception 'That weapon is gone.'; end if;
+  it := items->wi;
+  if coalesce(it->>'loaded', 'false') = 'true' then raise exception 'That weapon is already loaded.'; end if;
+  ammo := btrim(coalesce(it->'weaponProps'->>'ammo', ''));
+  if ammo <> '' then
+    for e in select value, ordinality - 1 as i from jsonb_array_elements(items) with ordinality loop
+      q := case when jsonb_typeof(e.value->'qty') = 'number' then (e.value->>'qty')::numeric
+                when e.value->'qty' is null or jsonb_typeof(e.value->'qty') = 'null' or e.value->>'qty' = '' then 1 else 0 end;
+      if ai is null and e.i <> wi and lower(btrim(coalesce(e.value->>'name', ''))) = lower(ammo) and q >= 1 then ai := e.i; aq := q; end if;
+    end loop;
+    if ai is null then raise exception 'No % left to load.', ammo; end if;
+    items := jsonb_set(items, array[ai::text, 'qty'], to_jsonb(aq - 1));
+  end if;
+  items := jsonb_set(items, array[wi::text, 'loaded'], 'true'::jsonb);
+  stamp := jsonb_build_object('at', gen_random_uuid()::text, 'by', auth.uid(), 'why', 'load');
+  perform set_config('bsh.items_rpc', '1', true);
+  update public.characters
+     set data = jsonb_set(jsonb_set(jsonb_set(coalesce(data, '{}'::jsonb), '{items}', items), '{itemsEdit}', stamp),
+                          '{vitals}', coalesce(data->'vitals', '{}'::jsonb) || jsonb_build_object('apRemaining', p_ap))
+   where id = p_character;
+  return jsonb_build_object('items', items, 'itemsEdit', stamp);
+end;
+$$;
+
+-- Firing a loaded weapon empties it (p_loaded false); the owner or a QM.
+create or replace function public.set_loaded(p_character uuid, p_item text, p_loaded boolean)
+returns jsonb
+language plpgsql security definer set search_path = public
+as $$
+declare c record; items jsonb; e record; wi int; stamp jsonb;
+begin
+  if auth.uid() is null then raise exception 'Sign in first.'; end if;
+  select owner, campaign_id, data into c from public.characters where id = p_character for update;
+  if not found or c.campaign_id is null then raise exception 'That character is not in a campaign.'; end if;
+  if c.owner is distinct from auth.uid() and not public.is_campaign_qm(c.campaign_id) then
+    raise exception 'You can only change your own characters.';
+  end if;
+  items := case when jsonb_typeof(c.data->'items') = 'array' then c.data->'items' else '[]'::jsonb end;
+  for e in select value, ordinality - 1 as i from jsonb_array_elements(items) with ordinality loop
+    if wi is null and e.value->>'uid' = p_item then wi := e.i; end if;
+  end loop;
+  if wi is null then raise exception 'That weapon is gone.'; end if;
+  items := jsonb_set(items, array[wi::text, 'loaded'], to_jsonb(coalesce(p_loaded, false)));
+  stamp := jsonb_build_object('at', gen_random_uuid()::text, 'by', auth.uid(), 'why', case when p_loaded then 'load' else 'fire' end);
+  perform set_config('bsh.items_rpc', '1', true);
+  update public.characters set data = jsonb_set(jsonb_set(coalesce(data, '{}'::jsonb), '{items}', items), '{itemsEdit}', stamp) where id = p_character;
+  return jsonb_build_object('items', items, 'itemsEdit', stamp);
+end;
+$$;
+revoke execute on function public.set_items(uuid, jsonb), public.load_weapon(uuid, text, numeric), public.set_loaded(uuid, text, boolean) from public, anon;
+grant execute on function public.set_items(uuid, jsonb), public.load_weapon(uuid, text, numeric), public.set_loaded(uuid, text, boolean) to authenticated;

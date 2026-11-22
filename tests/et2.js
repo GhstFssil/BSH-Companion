@@ -14,7 +14,7 @@ async function scenario(label, makeAs) {
   const kick = async (A) => { A.d.dispatchEvent(new A.w.Event('visibilitychange')); await wait(200); };
   const bR = await raw(R), bS = await raw(S), bV = await raw(V);
   const G = await bR.createCampaign('Pit'); await bS.joinCampaign(G); await bV.joinCampaign(G);
-  const mk = async (A, b, name, created) => { const c = A.w.BSH.blankCharacter(); c.id = A.w.crypto.randomUUID(); c.info.name = name; c.campaignId = G; c.created = created; if (name === 'Samwise') c.items = [{ name: 'Axe', qty: 1, weapon: true, weaponProps: { type: 'Melee', dmg: 'BP+30+1D6', cr: '2', cost: '2 AP', effect: 'Chop' } }, { name: 'Club', qty: 1, weapon: true, weaponProps: {} }, { name: 'Rope', qty: 1 }]; await b.saveCharacter(c); return c; };
+  const mk = async (A, b, name, created) => { const c = A.w.BSH.blankCharacter(); c.id = A.w.crypto.randomUUID(); c.info.name = name; c.campaignId = G; c.created = created; if (name === 'Samwise') c.items = [{ name: 'Axe', qty: 1, eqR: true, weapon: true, weaponProps: { type: 'Melee', dmg: 'BP+30+1D6', cr: '2', cost: '2 AP', effect: 'Chop' } }, { name: 'Club', qty: 1, eqL: true, weapon: true, weaponProps: {} }, { name: 'Rope', qty: 1 }]; await b.saveCharacter(c); return c; };
   const sam = await mk(S, bS, 'Samwise', 2), ava = await mk(V, bV, 'Avalon', 1);
   for (const A of [R, S, V]) A.go('campaign-' + G);
   const row = (A, n) => [...A.d.querySelectorAll('#campChars .cchar')].find((r) => r.querySelector('.char-btn span').textContent === n);

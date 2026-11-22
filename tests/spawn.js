@@ -71,7 +71,7 @@ async function scenario(label, makeAs) {
   R.click(R.$('spawnSheetBtn'));
   ok(await until(() => R.vis().join() === 'sheet' && /^#spawnsheet-/.test(hash(R))), P('View Character Sheet opens the draft sheet'));
   R.tab('abilities');
-  ok(await until(() => R.d.querySelectorAll('#panel-abilities .iline').length === 2), P('draft has the ability and fighting style'));
+  ok(await until(() => R.d.querySelectorAll('#panel-abilities .item:not(.custom-action) > .iline').length === 2), P('draft has the ability and fighting style'));
   R.tab('story');
   ok(R.d.querySelector('#panel-story textarea').value === 'A gaunt figure with ash-grey skin.', P('draft has the description'));
   ok(R.d.querySelector('#screen-sheet .corner').dataset.go === 'spawn-' + G, P('BACK returns to the spawn page'));

@@ -17,8 +17,8 @@ async function scenario(label, makeAs) {
   const G = await bR.createCampaign('Pit'); await bS.joinCampaign(G); await bV.joinCampaign(G);
   const BSH = S.w.BSH, IX = (k) => BSH.STATS.findIndex((x) => x.key === k);
   const mk = async (A, b, name, items, daAdj) => { const c = A.w.BSH.blankCharacter(); c.id = A.w.crypto.randomUUID(); c.info.name = name; c.campaignId = G; c.items = items || []; if (daAdj) c.statAdj[IX('DA')] = daAdj; await b.saveCharacter(c); return c; };
-  const sam = await mk(S, bS, 'Samwise', [{ name: 'Axe', qty: 1, weapon: true, weaponProps: { type: 'Melee', dmg: 'BP+2', cost: '2 AP' } }]);
-  const ava = await mk(V, bV, 'Avalon', [{ name: 'Club', qty: 1, weapon: true, weaponProps: { type: 'Melee', dmg: 'BP+2', cost: '2 AP' } }], -5);   // DA 7
+  const sam = await mk(S, bS, 'Samwise', [{ name: 'Axe', qty: 1, eqR: true, weapon: true, weaponProps: { type: 'Melee', dmg: 'BP+2', cost: '2 AP' } }]);
+  const ava = await mk(V, bV, 'Avalon', [{ name: 'Club', qty: 1, eqR: true, weapon: true, weaponProps: { type: 'Melee', dmg: 'BP+2', cost: '2 AP' } }], -5);   // DA 7
   const npc = async (name, daAdj) => { const c = R.w.BSH.blankCharacter(); c.id = R.w.crypto.randomUUID(); c.info.name = name; if (daAdj) c.statAdj[IX('DA')] = daAdj; await bR.createNpc(G, c); await bR.setNpcVisible(c.id, true); return c; };
   const ogre = await npc('Ogre', -5), brute = await npc('Brute', 0);   // DA 7 and DA 12, both AC 4
   for (const A of [R, S, V]) A.go('campaign-' + G);

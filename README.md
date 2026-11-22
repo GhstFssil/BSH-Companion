@@ -39,6 +39,13 @@ See `ARCHITECTURE.md` for what each file does.
 - **Item buffs:** each item has an ITEM BUFFS card: pick a talent or skill, enter an amount (negatives allowed), and tick Hold (in a hand) and/or Wear (on the body). Neither ticked = always active while carried. Active buffs are added to the skill math automatically.
 - **NPC sheets:** besides showing/hiding an NPC from the roster, a QM can HIDE SHEET: players see the name but cannot open the sheet (enforced in the database).
 
+## Attacks, loading, and QM item changes
+
+- **Attacks:** characters (`ch.attacks`, ABILITIES tab; Unarmed Strike by default) and weapons (`item.attacks`, on the item card) each hold a list of attacks (name, cost, Attack Dmg, range, damage type, effect). The Actions menu lists the character's own attacks always, and a weapon's only while it is in a hand (both hands for a **Two-handed** weapon). Older weapons' Cost / Attack Dmg / Range / Dmg Type became their first attack automatically.
+- **Loading:** a weapon with a **Load Cost** gets a **Load** action. `load_weapon` spends the AP, takes 1 of the **Ammo** item and marks it loaded in one step. Attacks ticked **Needs loading** show LOAD FIRST until then; firing calls `set_loaded` to empty it.
+- **QM item changes:** a QM can edit the ITEMS tab of any character in their campaign (`set_items`). The owner's device picks the change up within 5 s and shows a popup; the `protect_items` trigger stops an older copy's autosave from undoing it.
+- Database: **re-run `supabase/campaigns.sql`** (new functions `set_items`, `load_weapon`, `set_loaded`, trigger `protect_items_trg`, and `give_item` now passes attacks along).
+
 ## Campaign roster
 - Each character shows **HP, AP, SP, EP** (current / total) under its name. On your own characters (including NPCs you made) they are editable and change the same values on the sheet: HP remaining is editable on the sheet too (the old "Damage taken" field is gone; it is stored as damage behind the scenes), and AP, SP and EP have an "AP/SP/EP remaining" box on the STATS tab (blank means full). A **Damage/Healing** box with an ACCEPT button (on the sheet and on each roster entry) adds its number to HP remaining: positive heals, negative hurts. Other players' characters show the numbers read-only.
 - **SKILL CHECK** opens a popup for that character: pick a skill (its modifier is listed), then ROLL D20 or type your own roll and SET ROLL. A natural 1 takes off 5, a natural 20 adds 5. The result is shown only to whoever is rolling. CLOSE (or Escape) closes it.

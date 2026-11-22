@@ -249,6 +249,41 @@ await sv('ricky', nowTurn, 'spRemaining', 9);
 ok((await stt(ownerOf(nowTurn), nowTurn, 3, 10)).rows[0].r.sp === 10, 'SP never goes above the maximum (9 + 3 -> 10)');
 ok(err(await as('ava', `select set_vital($1,'apRemaining',1)`, [pcSam]), /your own|permission|unexpected/) || true, 'sanity');
 ok((await as('ricky', `select end_encounter($1)`, [C])).error === undefined, 'points: tidy up');
+// ---- items: QM edits (set_items), Load (load_weapon), firing (set_loaded), stale saves (protect_items) ----
+{
+  const itemsOf = async (id) => (await as('ricky', `select data->'items' i, data->'itemsEdit' e, data->'vitals' v, data->>'appearance' a from characters where id=$1`, [id])).rows[0];
+  const base = [{ name: 'Crossbow', weapon: true, uid: 'xb', weaponProps: { ammo: 'bolt' }, attacks: [] }, { name: 'Bolt', qty: 1 }];
+  ok(!(await as('sam', `update characters set data = jsonb_set(data, '{items}', $2::jsonb) where id=$1`, [pcSam, JSON.stringify(base)])).error, 'items: the owner saves items as usual');
+  ok(err(await as('ava', `select set_items($1, '[]'::jsonb)`, [pcSam]), /Only a QM/), 'a player cannot use set_items');
+  ok(err(await as('ricky', `select set_items($1, '{}'::jsonb)`, [pcSam]), /not valid/), 'set_items needs a list');
+  const st = (await as('ricky', `select set_items($1, $2::jsonb) s`, [pcSam, JSON.stringify(base.concat([{ name: 'Rope', qty: 1 }]))])).rows[0].s;
+  let r = await itemsOf(pcSam);
+  ok(st.why === 'qm' && st.by === ids.ricky && r.e.at === st.at && r.i.length === 3, "a QM replaces a player's items; the change is stamped");
+  await as('sam', `update characters set data = (data - 'itemsEdit') || jsonb_build_object('items', '[]'::jsonb, 'appearance', 'scarred') where id=$1`, [pcSam]);
+  r = await itemsOf(pcSam);
+  ok(r.i.length === 3 && r.e.at === st.at && r.a === 'scarred', "an owner's stale save keeps the QM's items but saves everything else");
+  await as('sam', `update characters set data = jsonb_set(data, '{items}', $2::jsonb) where id=$1`, [pcSam, JSON.stringify(base)]);
+  ok((await itemsOf(pcSam)).i.length === 2, 'an up-to-date save changes the items');
+  ok(err(await as('sam', `select load_weapon($1, 'xb', 5)`, [pcSam]), /during an encounter/), 'loading only during an encounter');
+  ok(!(await as('ricky', `select start_encounter($1)`, [C])).error, 'items: new encounter');
+  await si('sam', pcSam, 10, 0);
+  ok(err(await as('ava', `select load_weapon($1, 'xb', 5)`, [pcSam]), /your own/), "a player cannot load a teammate's weapon");
+  ok(err(await as('sam', `select load_weapon($1, 'nope', 5)`, [pcSam]), /gone/), 'unknown weapon refused');
+  ok(err(await as('sam', `select load_weapon($1, 'xb', null)`, [pcSam]), /not valid/), 'AP must be given');
+  const L = (await as('sam', `select load_weapon($1, 'xb', 4) r`, [pcSam])).rows[0].r;
+  r = await itemsOf(pcSam);
+  ok(r.i[0].loaded === true && r.i[1].qty === 0 && Number(r.v.apRemaining) === 4 && r.e.why === 'load' && L.itemsEdit.at === r.e.at && L.items[1].qty === 0,
+    'load: marked loaded, 1 ammo used (name matched in any case), AP set, all in one step');
+  ok(err(await as('sam', `select load_weapon($1, 'xb', 2)`, [pcSam]), /already loaded/), 'cannot load twice');
+  ok(err(await as('ava', `select set_loaded($1, 'xb', false)`, [pcSam]), /your own/), "a player cannot fire a teammate's weapon");
+  const F = (await as('ricky', `select set_loaded($1, 'xb', false) r`, [pcSam])).rows[0].r;
+  r = await itemsOf(pcSam);
+  ok(r.i[0].loaded === false && r.e.why === 'fire' && F.itemsEdit.at === r.e.at, 'firing empties it (a QM can do it too)');
+  ok(err(await as('sam', `select load_weapon($1, 'xb', 1)`, [pcSam]), /No bolt left/) && Number((await itemsOf(pcSam)).v.apRemaining) === 4, 'no ammo left: refused, nothing spent');
+  await as('ricky', `select set_items($1, $2::jsonb)`, [pcSam, JSON.stringify([{ name: 'Sling', weapon: true, uid: 'sl', weaponProps: {} }])]);
+  ok(!(await as('ricky', `select load_weapon($1, 'sl', 3)`, [pcSam])).error && (await itemsOf(pcSam)).i[0].loaded === true, 'a weapon that names no ammo loads without using any (QM for a player)');
+  ok((await as('ricky', `select end_encounter($1)`, [C])).error === undefined, 'items: tidy up');
+}
 // ---- attacks ----
 const dd = (who, a, t, n) => as(who, `select deal_damage($1,$2,$3)`, [a, t, n]);
 const dmgOf = async (id) => Number(((await vit(id)) || {}).damage || 0);

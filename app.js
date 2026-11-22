@@ -92,6 +92,9 @@
     delete c.info.sexAge;
     c.vitals = Object.assign(BSH.blankCharacter().vitals, raw.vitals || {});
     if (!Array.isArray(c.customActions)) c.customActions = [];
+    c.attacks = Array.isArray(c.attacks) ? cleanAttacks(c.attacks) : [unarmedStrike()];
+    if (!Array.isArray(c.items)) c.items = [];
+    c.items.forEach(fixWeapon);
     return c;
   }
   // Pick up changes made elsewhere (another device, or a character handed to you) when the list opens
@@ -595,7 +598,9 @@
       const name = h('input', { type: 'text', id: 'giveName', maxlength: '60', placeholder: 'Item name', 'aria-label': 'Item name', autocomplete: 'off' });
       const qty = h('input', { type: 'number', id: 'giveQty', class: 'num', min: '1', step: '1', value: '1', 'aria-label': 'Quantity' });
       const fl = FLAGS.map(([k, label]) => { const cb = h('input', { type: 'checkbox', id: 'give' + label, 'aria-label': label }); return { k, cb, el: h('label', { class: 'chk' }, cb, h('span', { text: label })) }; });
-      const wf = {}, wbox = h('div', { class: 'wpgrid', hidden: true }, WEAPON_PROPS.map(([k, label]) => {
+      // weapon fields: its properties, plus one attack (more can be added on the sheet)
+      const GIVE_W = WEAPON_PROPS.filter(([k]) => k !== 'effect').concat([['cost', 'Attack Cost'], ['dmg', 'Attack Dmg'], ['range', 'Range'], ['damage', 'Dmg Type'], ['effect', 'Effect']]);
+      const wf = {}, wbox = h('div', { class: 'wpgrid', hidden: true }, GIVE_W.map(([k, label]) => {
         wf[k] = k === 'effect' ? h('textarea', { id: 'giveW' + k, 'aria-label': 'Weapon ' + label, placeholder: label }) : h('input', { type: 'text', id: 'giveW' + k, maxlength: '200', 'aria-label': 'Weapon ' + label, placeholder: label, autocomplete: 'off' });
         return k === 'effect' ? h('div', { class: 'wp-wide' }, wf[k]) : wf[k];
       }));
@@ -621,9 +626,10 @@
           const mp = fl[2].cb.checked ? cleanMagic({ type: mf.type.value, attunement: mf.attunement.value, maxCharges: mf.maxCharges.value, effect: mf.effect.value, spellbook: mf.spellbook.checked }) : {};
           await backend.giveItem(null, to.ch.id, { name: name.value.trim(), qty: n, charges: mp.maxCharges === '' || mp.maxCharges == null ? null : mp.maxCharges, desc: desc.value, magicProps: mp,
             wearable: fl[0].cb.checked, weapon: fl[1].cb.checked, magic: fl[2].cb.checked,
-            weaponProps: fl[1].cb.checked ? cleanWeapon(Object.fromEntries(WEAPON_PROPS.map(([k]) => [k, wf[k].value]))) : {} });
+            weaponProps: fl[1].cb.checked ? cleanWeapon(Object.fromEntries(WEAPON_PROPS.map(([k]) => [k, wf[k].value]))) : {},
+            attacks: fl[1].cb.checked ? attacksFor(name.value.trim(), null, { cost: wf.cost.value, dmg: wf.dmg.value, range: wf.range.value, damage: wf.damage.value }) : [] });
           msg.textContent = 'Gave ' + n + ' ' + name.value.trim() + ' to ' + (to.ch.info.name || 'Unnamed character') + '.';
-          name.value = ''; desc.value = ''; qty.value = '1'; mbox.hidden = true; ['type', 'attunement', 'maxCharges', 'effect'].forEach((k) => { mf[k].value = ''; }); mf.spellbook.checked = false; fl.forEach((f) => { f.cb.checked = false; }); wbox.hidden = true; WEAPON_PROPS.forEach(([k]) => { wf[k].value = ''; });
+          name.value = ''; desc.value = ''; qty.value = '1'; mbox.hidden = true; ['type', 'attunement', 'maxCharges', 'effect'].forEach((k) => { mf[k].value = ''; }); mf.spellbook.checked = false; fl.forEach((f) => { f.cb.checked = false; }); wbox.hidden = true; GIVE_W.forEach(([k]) => { wf[k].value = ''; });
         } catch (e) { msg.textContent = e.message; } finally { btn.disabled = false; }
       });
       giveUi = { gid: g.id, rows: [], sel, el: [h('div', { class: 'row2' }, sel), name,
@@ -1073,8 +1079,6 @@
     { name: 'Movement', desc: 'Run up to your full RD.', cost: '3 AP', refs: (st) => [['RD', fmt(st[2])]] },
     { name: 'Half Movement', desc: 'Run up to half your RD, rounded up.', cost: '2 AP', refs: (st) => [['1/2 RD', String(Math.ceil(st[2] / 2))]] },
     { name: 'Shift', desc: 'Move 1 space, avoiding standard reaction attacks.', cost: '1 AP' },
-    { name: 'Unarmed Strike', attack: true, power: 'BP', desc: 'Make an Attack without a Weapon.', cost: '2 AP',
-      refs: (st) => [['Range', '0-1'], ['Attack Dmg', fmt(st[BSH.STATS.findIndex((x) => x.key === 'BP')])]] },
     { name: 'Combo Attack', combo: true, desc: 'Declare a Combo Attack with another character in the encounter (the Finisher) and roll a Skill Check from the Combo Check table. It then waits for the Finisher\'s turn and ends when your next turn begins.', cost: '3 AP' },
     { name: 'Block/Parry', desc: 'Attempt to stop an Attack with an Equipped Weapon or Shield that has a CR. Use only as a Reaction to being Attacked.', cost: '1 AP',
       refs: (st, c) => [['CR', highestCr(c)]] },
@@ -1495,6 +1499,7 @@
       const tr = state.campChars.find((r) => r.ch.id === sel.value), mc = actionCh();
       if (!tr || !actionEncounter()) { out.textContent = 'Pick a target.'; return; }
       const m = /^(\d+(?:\.\d+)?)\s*(AP|SP)$/.exec(a.cost || ''), res = BSH.compute(mc);
+      if (a.weaponUid) { const w = (mc.items || []).find((x) => x && x.uid === a.weaponUid); if (!w || !w.loaded) { out.textContent = 'Load ' + ((w && w.name) || 'the weapon') + ' first.'; return; } }
       if (m && vitalNow(mc, res, m[2]) < Number(m[1])) { out.textContent = 'Not enough ' + m[2] + ' for ' + a.name + ' (' + fmt(vitalNow(mc, res, m[2])) + ' left).'; return; }
       const st = res.stat, tres = BSH.compute(tr.ch), ts = tres.stat, ix = (k) => BSH.STATS.findIndex((x) => x.key === k);
       const sa = st[ix('SA')], da = ts[ix('DA')], ac = ts[ix('AC')];
@@ -1514,6 +1519,7 @@
         if ((canDef || combo) && pw) {
           // the target can block or parry (or this is a Combo Attack): their device answers, then the result comes back here
           if (m) await performAction({ name: a.name, cost: a.cost });
+          if (a.weaponUid) await fireWeapon(mc, a.weaponUid);
           const id = await backend.startAttack(mc.id, tr.ch.id, total, pw.total, mine, combo ? combo.leader : null);
           out.textContent = mine + '. ' + (combo ? 'Waiting for the Leader to roll their attack, then ' + tn + ' answers...' : 'Waiting for ' + tn + ' to block, parry or take it (the QM can skip the block)...');
           rollBtn.hidden = goBtn.hidden = die.hidden = sel.hidden = true;
@@ -1521,6 +1527,7 @@
           return;
         }
         if (m) await performAction({ name: a.name, cost: a.cost });
+        if (a.weaponUid) await fireWeapon(mc, a.weaponUid);
         const kind = BSH.COMBAT.classify(total, da);
         if (kind === 'critfail') { out.textContent = line + 'CRITICAL MISS. You recover 2 less AP at the start of your next turn.'; const own = findChar(mc.id); if (own) { own.vitals = Object.assign({}, own.vitals, { apPenalty: 2 }); queueSave(own); } return; }
         if (!(total > da)) { out.textContent = line + 'MISS.'; return; }
@@ -1590,9 +1597,7 @@
   }
 
   // The Leader's half: the Finisher has started the combo; the Leader (their player, or the QM for an NPC) picks an attack and rolls.
-  const attackOptions = (c) => [{ name: 'Unarmed Strike', power: 'BP', cost: '2 AP' }].concat(((c && c.items) || []).filter((it) => it && it.weapon && it.name).map((it) => {
-    const wp = it.weaponProps || {}; return { name: it.name, power: wp.dmg, cost: String(wp.cost || '').trim() || null };
-  }));
+  const attackOptions = (c) => attackActions(c).filter((a) => a.attack && !a.blocked).map((a) => ({ name: a.name, power: a.power, cost: a.cost, weaponUid: a.weaponUid }));
   const dismissedCombo = new Set();
   let comboOpen = null;
   function closeComboLeader() { $('comboModal').hidden = true; $('comboBody').replaceChildren(); comboOpen = null; }
@@ -1628,6 +1633,7 @@
       if (busy) return;
       const advNote = adv.take();
       if (!(n >= 1 && n <= 12) || Math.floor(n) !== n) { out.textContent = 'Enter the number on your d12 (1 to 12).'; return; }
+      if (!opts[+sel.value]) { out.textContent = 'No attack ready: add one to the character or hold a weapon.'; return; }
       const a = opts[+sel.value], pp = parsePower(a.power), res = BSH.compute(lc), m = /^(\d+(?:\.\d+)?)\s*AP$/.exec(a.cost || ''), cost = m ? Number(m[1]) : 0;
       if (!pp) { out.textContent = a.name + "'s Attack Dmg is not a formula the app can work out. Pick another attack."; return; }
       if (cost && vitalNow(lc, res, 'AP') < cost) { out.textContent = 'Not enough AP for ' + a.name + ' (' + fmt(vitalNow(lc, res, 'AP')) + ' left, ' + fmt(cost) + ' needed).'; return; }
@@ -1639,6 +1645,7 @@
         const pw = powerFrom(pp, res.stat, rr.groups.slice(1).map((x) => x.total));
         const text = 'Leader ' + (lc.info.name || '') + (advNote ? ' (' + advNote + ')' : '') + ': ' + ga.text + (adj ? (adj < 0 ? ' - 5' : ' + 5') : '') + ' + SA ' + fmt(sa) + ' = ' + fmt(total);
         if (cost) { const ap = r2(vitalNow(lc, res, 'AP') - cost); await backend.setVital(lc.id, 'apRemaining', ap); lc.vitals = Object.assign({}, lc.vitals, { apRemaining: ap }); }
+        if (a.weaponUid) await fireWeapon(lc, a.weaponUid);
         await backend.comboLeaderAttack(g.id, at.id, total, pw.total, text);
         closeComboLeader();
         try { renderCampaignPage(); } catch (e) { /* page not open */ }
@@ -1700,6 +1707,53 @@
     renderActionList();
     try { renderCampaignPage(); } catch (e) { /* page not open */ }
   }
+  // Attack actions: the character's own attacks, then the attacks of weapons in hand, then a Load for each held weapon with a Load Cost.
+  // An attack that needs loading shows LOAD FIRST (no button) until its weapon is loaded.
+  function attackActions(c) {
+    const st = (v) => String(v == null ? '' : v).trim();
+    // Attack Dmg with no dice is worked out (e.g. "12 (BP)"); the effect is not repeated when it is the description
+    const dmgText = (f, stt) => { const pp = parsePower(f); return pp && !pp.sides.length && stt ? fmt(powerFrom(pp, stt, []).total) + ' (' + st(f) + ')' : f; };
+    const refsOf = (atk, it) => (stt) => { const wp = (it && it.weaponProps) || {}; return [['Weapon', it && it.name], ['Range', atk.range], ['Dmg Type', atk.damage], ['Attack Dmg', dmgText(atk.dmg, stt)], ['Effect', it ? atk.effect : ''],
+      ['Type', wp.type], ['Size', wp.size], ['Weight', wp.weight], ['CR', wp.cr], ['Weapon Effect', wp.effect], ['Needs loading', it && atk.needsLoad ? (it.loaded ? 'loaded' : 'not loaded') : '']]
+      .filter(([, v]) => st(v) !== '').map(([l, v]) => [l, String(v)]); };
+    const own = (Array.isArray(c && c.attacks) ? c.attacks : []).filter((a) => a && st(a.name)).map((atk) => ({
+      attack: true, own: true, power: atk.dmg, name: st(atk.name), desc: st(atk.effect) || 'Make an Attack.', cost: st(atk.cost) || null, refs: refsOf(atk, null) }));
+    const held = heldWeapons(c);
+    const wpn = held.flatMap((it) => (Array.isArray(it.attacks) ? it.attacks : []).map((atk) => {
+      const nm = st(atk.name), blocked = !!atk.needsLoad && !it.loaded;
+      return { attack: true, power: atk.dmg, name: !nm || nm === st(it.name) ? 'Attack: ' + st(it.name) : st(it.name) + ': ' + nm,
+        desc: 'Make an Attack with ' + st(it.name) + '.', cost: blocked ? null : st(atk.cost) || null, tag: blocked ? 'LOAD FIRST' : null,
+        note: blocked ? st(atk.cost) + ' (load ' + st(it.name) + ' first)' : null, blocked, weaponUid: atk.needsLoad ? it.uid : null, refs: refsOf(atk, it) };
+    }));
+    const loads = held.filter((it) => st(it.weaponProps && it.weaponProps.loadCost)).map((it) => {
+      const lc = st(it.weaponProps.loadCost), m = /^(\d+(?:\.\d+)?)\s*AP$/i.exec(lc), ammo = st(it.weaponProps.ammo);
+      const have = ammo ? (c.items || []).filter((x) => x !== it && st(x.name).toLowerCase() === ammo.toLowerCase()).reduce((n, x) => n + effQty(x), 0) : null;
+      return { load: true, name: 'Load: ' + st(it.name), weaponUid: it.uid, ammo,
+        desc: 'Load ' + st(it.name) + (ammo ? ', using 1 ' + ammo : '') + '.', cost: it.loaded || !m ? null : fmt(Number(m[1])) + ' AP',
+        tag: it.loaded ? 'LOADED' : null, note: it.loaded ? 'Already loaded' : m ? null : lc,
+        refs: () => [['Loaded', it.loaded ? 'yes' : 'no']].concat(ammo ? [['Ammo', ammo + ' (' + fmt(have) + ' left)']] : []) };
+    });
+    return own.concat(wpn, loads);
+  }
+  // Load: AP, 1 ammo and the loaded mark change together on the server
+  async function loadAction(a) {
+    const c = actionCh(), m = /^(\d+(?:\.\d+)?)\s*AP$/.exec(a.cost || '');
+    if (!m || !actionEncounter()) return;
+    const res = BSH.compute(c), now = vitalNow(c, res, 'AP'), amount = Number(m[1]);
+    if (now < amount) { actionFeedback = 'Not enough AP for ' + a.name + ' (' + fmt(now) + ' left).'; renderActionList(); return; }
+    let r;
+    try { r = await backend.loadWeapon(c.id, a.weaponUid, r2(now - amount)); } catch (e) { actionFeedback = e.message; renderActionList(); return; }
+    adoptItems(c.id, r.items, r.itemsEdit);
+    [c, findChar(c.id), actionChar].forEach((x) => { if (x) x.vitals = Object.assign({}, x.vitals, { apRemaining: r2(now - amount) }); });
+    actionFeedback = 'Action Performed: ' + a.name + ' (-' + fmt(amount) + ' AP' + (a.ammo ? ', -1 ' + a.ammo : '') + ')';
+    renderActionList();
+    try { renderCampaignPage(); } catch (e) { /* page not open */ }
+  }
+  // Firing a weapon that needs loading empties it
+  async function fireWeapon(c, uid) {
+    const r = await backend.setLoaded(c.id, uid, false);
+    adoptItems(c.id, r.items, r.itemsEdit);
+  }
   function renderActionList() {
     const c = actionCh(), g = actionEncounter(), live = !!g && !!c;
     const canAct = live && (actionMine || iAmQm(g)), res = live ? BSH.compute(c) : null;
@@ -1707,25 +1761,20 @@
     if (live) kids.push(h('div', { class: 'apboxes' },
       h('div', { class: 'apbox' }, h('span', { class: 'lbl', text: 'AP Remaining' }), h('b', { id: 'actionAp', text: fmt(vitalNow(c, res, 'AP')) })),
       h('div', { class: 'apbox' }, h('span', { class: 'lbl', text: 'SP Remaining' }), h('b', { id: 'actionSp', text: fmt(vitalNow(c, res, 'SP')) }))));
-    const weaponActs = ((c && c.items) || []).filter((it) => it && it.weapon && it.name).map((it) => {
-      const wp = it.weaponProps || {}, cost = String(wp.cost || '').trim();
-      return { attack: true, power: wp.dmg, name: 'Attack: ' + it.name, desc: 'Make an Attack with ' + it.name + '.', cost: cost || null,
-        refs: () => [['Type', wp.type], ['Size', wp.size], ['Weight', wp.weight], ['Dmg Type', wp.damage], ['Range', wp.range], ['CR', wp.cr], ['Attack Dmg', wp.dmg], ['Effect', wp.effect]]
-          .filter(([, v]) => v != null && String(v).trim() !== '').map(([l, v]) => [l, String(v)]) };
-    });
+    const atkActs = c ? attackActions(c) : [];
     const customActs = ((c && c.customActions) || []).filter((it) => it && String(it.name || '').trim()).map((it) => {
       const ct = String(it.cost || '').trim(), m = /^(\d+(?:\.\d+)?)\s*(AP|SP)$/i.exec(ct);   // "2 AP" or "1 SP" gets a button that spends it; anything else is shown as text
       return { name: it.name, desc: it.desc || 'A custom action.', cost: m ? m[1] + ' ' + m[2].toUpperCase() : null, note: m ? null : ct || null, custom: true };
     });
-    ACTIONS.slice(0, -1).concat(weaponActs, customActs, ACTIONS.slice(-1)).forEach((a) => kids.push(h('div', { class: 'arow' },
+    ACTIONS.slice(0, 3).concat(atkActs.filter((a) => a.own), ACTIONS.slice(3, -1), atkActs.filter((a) => !a.own), customActs, ACTIONS.slice(-1)).forEach((a) => kids.push(h('div', { class: 'arow' },
       h('button', { class: 'btn', type: 'button', text: a.name, onclick: () => {
         if (a.card) { restCard(); return; }
         const st = BSH.compute(actionCh()).stat;
         showActionCard(a.name, [a.desc, a.cost ? 'Cost: ' + a.cost : a.note ? 'Cost: ' + a.note : null, ...(a.refs ? a.refs(st, actionCh()).map(([l, v]) => l + ': ' + v) : [])]
           .filter(Boolean).map((t) => h('span', { class: 'dline', text: t })), showActionList);
       } }),
-      a.cost ? (canAct ? h('button', { class: 'acost', type: 'button', text: a.cost, 'aria-label': 'Perform ' + a.name + ' for ' + a.cost, onclick: () => (a.attack ? attackCard(a) : a.combo ? comboCard(a) : performAction(a)) })
-                       : h('span', { class: 'acost', text: a.cost })) : null)));
+      a.cost ? (canAct ? h('button', { class: 'acost', type: 'button', text: a.cost, 'aria-label': 'Perform ' + a.name + ' for ' + a.cost, onclick: () => (a.attack ? attackCard(a) : a.combo ? comboCard(a) : a.load ? loadAction(a) : performAction(a)) })
+                       : h('span', { class: 'acost', text: a.cost })) : a.tag ? h('span', { class: 'acost', text: a.tag }) : null)));
     if (live) kids.push(h('p', { class: 'skill-out', id: 'actionFeedback', role: 'status', text: actionFeedback }));
     $('actionsList').replaceChildren(...kids);
   }
@@ -1851,6 +1900,7 @@
     } catch (e) { /* offline or signed out: try again next tick */ } finally { polling = false; }
     await encounterCheck();
     await spawnSync();
+    await itemsSync();
     collectGifts();
     await liveEncounterSync();
     attackWatchTick();
@@ -1910,6 +1960,38 @@
   setInterval(pollCampaigns, 5000);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') pollCampaigns(); });
 
+
+  /* ================= Items changed by someone else (a QM, or a load / shot from another device) ================= */
+  // data.itemsEdit = { at, by, why } is stamped by the server; an older copy's save never overwrites those items.
+  const itemSeen = new Map();   // character id -> the last stamp this device has seen (for the QM popup)
+  const stampAt = (c) => (c && c.itemsEdit && c.itemsEdit.at) || '';
+  // Puts a fresh item list into every copy of that character this device holds
+  function adoptItems(id, items, stamp) {
+    const copies = new Set([findChar(id), cur && cur.ch && cur.ch.id === id ? cur.ch : null, actionChar && actionChar.id === id ? actionChar : null]
+      .concat(state.campChars.filter((r) => r.ch && r.ch.id === id).map((r) => r.ch)));
+    copies.forEach((x) => {
+      if (!x) return;
+      x.items = JSON.parse(JSON.stringify(items || [])); x.items.forEach(fixWeapon);
+      if (stamp) x.itemsEdit = stamp; else delete x.itemsEdit;
+    });
+    if (stamp) itemSeen.set(id, stamp.at);
+    if (cur && cur.ch && cur.ch.id === id && !$('screen-sheet').hidden) { rebuild('items'); refresh(); }
+  }
+  async function itemsSync() {
+    if (!state.user || !state.chars.some((c) => c.campaignId)) return;
+    let rows;
+    try { rows = await backend.listCharacters(); } catch (e) { return; }
+    if (!state.user) return;
+    const said = [];
+    rows.forEach((r) => {
+      const st = r.itemsEdit || null, at = (st && st.at) || '', before = itemSeen.get(r.id);
+      itemSeen.set(r.id, at);
+      if (before !== undefined && before !== at && st && st.why === 'qm' && st.by !== state.user.id) said.push((r.info && r.info.name) || 'your character');
+      const open = cur && !cur.viewOnly && cur.ch.id === r.id ? cur.ch : null;
+      if ([findChar(r.id), open].some((x) => x && stampAt(x) !== at)) adoptItems(r.id, Array.isArray(r.items) ? r.items : [], st);
+    });
+    if (said.length) showToast('The QM changed the items of ' + said.join(', ') + '.');
+  }
 
   /* ================= Items given to my characters ================= */
   // Gifts wait on the server. Each is added to the character's sheet once (giftLog guards against repeats), saved, and only then confirmed.
@@ -2105,8 +2187,8 @@
     if (D.style != null && T.styles[D.style]) c.abilities.push({ name: 'Fighting Style: ' + T.styles[D.style].name, desc: T.styles[D.style].desc });
     if (D.weapon != null && T.weapons[D.weapon]) {
       const w = T.weapons[D.weapon];
-      c.items.push({ name: w.type, qty: 1, charges: null, desc: '', wearable: false, weapon: true, magic: false, buffs: [],
-        weaponProps: cleanWeapon(w), magicProps: cleanMagic({}) });
+      c.items.push(fixWeapon({ name: w.type, qty: 1, charges: null, desc: '', wearable: false, weapon: true, magic: false, buffs: [],
+        weaponProps: cleanWeapon(w), attacks: attacksFor(w.type, null, w), magicProps: cleanMagic({}) }));
     }
     Object.keys(sp.points || {}).forEach((u) => (sp.points[u] || []).forEach((p) => {
       c.talents[p.up] = (Number(c.talents[p.up]) || 0) + 2;
@@ -2234,7 +2316,8 @@
         const iname = String((it && it.name) || '').trim();
         if (!iname || !codexKey(iname)) return;
         const e = { name: iname.slice(0, 60), desc: String(it.desc || '').slice(0, 300), weapon: !!it.weapon, magic: !!it.magic };
-        if (it.weapon && it.weaponProps && it.weaponProps.dmg != null) e.dmg = String(it.weaponProps.dmg).slice(0, 40);
+        const a0 = it.weapon && Array.isArray(it.attacks) && it.attacks[0];
+        if (a0 && String(a0.dmg || '').trim()) e.dmg = String(a0.dmg).slice(0, 40);
         out.push(['items', codexKey(iname), e]);
       });
     });
@@ -2926,9 +3009,11 @@
       o.eqL = !!it.eqL; o.eqR = !!it.eqR; o.eqB = !!it.eqB;
       if (o.eqB) { o.eqL = false; o.eqR = false; }
       o.charges = o.magic && num(it.charges) !== null ? num(it.charges) : null; o.charges = clampCharges(Object.assign({}, o, { charges: o.charges }));
+      if (o.weapon) { o.attacks = attacksFor(o.name, it.attacks, it.weaponProps); if (typeof it.twoHanded === 'boolean') o.twoHanded = it.twoHanded; o.loaded = it.loaded === true; fixWeapon(o); }
       return o;
     });
     c.abilities = (Array.isArray(raw.abilities) ? raw.abilities : []).slice(0, 100).filter((a) => a && typeof a === 'object').map((a) => ({ name: str(a.name, 100), desc: str(a.desc, 3000) }));
+    c.attacks = Array.isArray(raw.attacks) ? cleanAttacks(raw.attacks) : [unarmedStrike()];
     c.customActions = (Array.isArray(raw.customActions) ? raw.customActions : []).slice(0, 50).filter((a) => a && typeof a === 'object').map((a) => ({ name: str(a.name, 60), cost: str(a.cost, 20), desc: str(a.desc, 3000) }));
     c.appearance = str(raw.appearance, 10000); c.backstory = str(raw.backstory, 10000); c.motivation = str(raw.motivation, 10000);
     if (typeof raw.tokenImage === 'string' && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(raw.tokenImage) && raw.tokenImage.length <= 100000) c.tokenImage = raw.tokenImage;
@@ -3107,7 +3192,7 @@
                 ['totem', 'TOTEM'], ['buffs', 'BUFFS'], ['items', 'ITEMS'], ['abilities', 'ABILITIES'], ['story', 'STORY']];
 
   function touch() {
-    if (cur.viewOnly) return;   // someone else's character is never changed or saved from here
+    if (cur.viewOnly) { if (cur.qmItems) { queueItemsSave(); refresh(); } return; }   // someone else's character is never saved from here (a QM's item changes go by setItems)
     cur.ch.updated = Date.now(); queueSave(cur.ch); refresh();
   }
 
@@ -3165,6 +3250,9 @@
 
   function openSheet(ch, viewOnly) {
     cur = { ch, outs: {}, bars: {}, viewOnly: viewOnly || null, itemOpen: new Set(), buffOpen: new Set() };
+    // a QM looking at someone else's character in their campaign can change its items (saved with setItems)
+    const camp = viewOnly && !viewOnly.draft && ch.campaignId && state.campaigns.find((g) => g.id === ch.campaignId);
+    cur.qmItems = !!(camp && iAmQm(camp));
     const tabs = $('tabs'), panels = $('panels');
     tabs.replaceChildren(); panels.replaceChildren();
     cur.panels = {};
@@ -3184,14 +3272,34 @@
     cur.panels.abilities.append(...panelAbilities());
     cur.panels.story.append(...panelStory());
     setStatus(pending && pending.id === ch.id ? 'Saving...' : '');
-    if (cur.viewOnly) {   // someone else's character: look, don't touch
-      panels.querySelectorAll('input, select, textarea, button').forEach((e) => { e.disabled = true; });
-      panels.querySelectorAll('.chev').forEach((e) => { e.disabled = false; });   // reading an item's description is still allowed
-      panels.querySelectorAll('.danger').forEach((e) => { e.hidden = true; });
-      setStatus('Read only' + (cur.viewOnly.owner ? ' · ' + cur.viewOnly.owner + "'s " + (ch.isNpc ? 'NPC' : 'character') : ''));
+    if (cur.viewOnly) {   // someone else's character: look, don't touch (a QM may change the items)
+      Object.entries(cur.panels).forEach(([id, p]) => { if (!(id === 'items' && cur.qmItems)) lockPanel(p); });
+      setStatus(viewOnlyStatus());
     }
     showTab('info');
     refresh();
+  }
+
+  function lockPanel(p) {
+    p.querySelectorAll('input, select, textarea, button').forEach((e) => { e.disabled = true; });
+    p.querySelectorAll('.chev').forEach((e) => { e.disabled = false; });   // reading an item's description is still allowed
+    p.querySelectorAll('.danger').forEach((e) => { e.hidden = true; });
+  }
+  const viewOnlyStatus = () => 'Read only' + (cur.viewOnly.owner ? ' · ' + cur.viewOnly.owner + "'s " + (cur.ch.isNpc ? 'NPC' : 'character') : '') + (cur.qmItems ? ' · you can change the items (QM)' : '');
+  // A QM's item changes on someone else's sheet: sent as the whole item list, half a second after the last change
+  let itemsTimer = null;
+  function queueItemsSave() {
+    const ch = cur.ch;
+    setStatus('Saving items...');
+    clearTimeout(itemsTimer);
+    itemsTimer = setTimeout(async () => {
+      itemsTimer = null;
+      try {
+        const stamp = await backend.setItems(ch.id, JSON.parse(JSON.stringify(ch.items)));
+        ch.itemsEdit = stamp;
+        if (cur && cur.ch === ch) setStatus(viewOnlyStatus() + ' · items saved');
+      } catch (e) { if (cur && cur.ch === ch) setStatus('Items not saved: ' + e.message); }
+    }, 500);
   }
 
   function showTab(id) {
@@ -3520,10 +3628,35 @@
   const HANDS = [['eqL', 'Left hand', 'LEFT HAND', 'L'], ['eqR', 'Right hand', 'RIGHT HAND', 'R']];
   const FLAGS = [['wearable', 'Wearable'], ['weapon', 'Weapon'], ['magic', 'Magic']];
 
-  // Weapon properties, as in the rulebook's Weapon Types list (all free text, e.g. Damage "Sharp", Dmg "BP+1D6", Cost "2 AP")
-  const WEAPON_PROPS = [['type', 'Type'], ['size', 'Size/Style'], ['weight', 'Weight'], ['damage', 'Dmg Type'], ['range', 'Range'],
-    ['cost', 'Cost'], ['cr', 'CR'], ['dmg', 'Attack Dmg'], ['effect', 'Effect']];
+  // Weapon properties (all free text). Its attacks are a list of their own (it.attacks), as on the character (ch.attacks).
+  // Load Cost (e.g. "5 AP") makes a Load action; Ammo names the item one Load uses up (none if blank).
+  const WEAPON_PROPS = [['type', 'Type'], ['size', 'Size/Style'], ['weight', 'Weight'], ['cr', 'CR'], ['loadCost', 'Load Cost'], ['ammo', 'Ammo'], ['effect', 'Effect']];
   const cleanWeapon = (w) => { const o = {}; WEAPON_PROPS.forEach(([k]) => { o[k] = w && w[k] != null ? String(w[k]).slice(0, 1000) : ''; }); return o; };
+  // An attack: name, cost ("2 AP"), Attack Dmg formula, range, damage type, effect; needsLoad (weapon attacks) means the weapon must be loaded
+  const ATTACK_FIELDS = [['name', 'Name', 60], ['cost', 'Cost', 20], ['dmg', 'Attack Dmg', 100], ['range', 'Range', 60], ['damage', 'Dmg Type', 60], ['effect', 'Effect', 1000]];
+  const cleanAttack = (a) => { const o = {}; ATTACK_FIELDS.forEach(([k, , n]) => { o[k] = a && a[k] != null ? String(a[k]).slice(0, n) : ''; }); if (a && a.needsLoad === true) o.needsLoad = true; return o; };
+  const cleanAttacks = (l) => (Array.isArray(l) ? l : []).filter((a) => a && typeof a === 'object').slice(0, 20).map(cleanAttack);
+  const unarmedStrike = () => cleanAttack({ name: 'Unarmed Strike', cost: '2 AP', dmg: 'BP', range: '0-1', effect: 'Make an Attack without a Weapon.' });
+  // Weapons made before attack lists had one Cost / Attack Dmg / Range / Dmg Type: those become the weapon's first attack
+  const LEGACY_ATTACK = ['cost', 'dmg', 'range', 'damage'];
+  function attacksFor(name, list, wp) {
+    const legacy = !!wp && LEGACY_ATTACK.some((k) => String(wp[k] == null ? '' : wp[k]).trim());
+    if (Array.isArray(list) && (list.length || !legacy)) return cleanAttacks(list);
+    return [cleanAttack({ name: String(name || '').trim() || 'Attack', cost: wp && wp.cost, dmg: wp && wp.dmg, range: wp && wp.range, damage: wp && wp.damage })];
+  }
+  // Brings a weapon up to date: attack list, an id (for Load), two-handed flag, loaded flag. Safe to run again.
+  function fixWeapon(it) {
+    if (!it || typeof it !== 'object' || !it.weapon) return it;
+    const wp = it.weaponProps && typeof it.weaponProps === 'object' ? it.weaponProps : (it.weaponProps = {});
+    it.attacks = attacksFor(it.name, it.attacks, wp);
+    LEGACY_ATTACK.forEach((k) => { delete wp[k]; });
+    if (typeof it.twoHanded !== 'boolean') it.twoHanded = /\b(2|two)[ -]hand/i.test(String(wp.effect || '') + ' ' + String(wp.size || ''));
+    if (!it.uid) it.uid = uuid();
+    it.loaded = it.loaded === true;
+    return it;
+  }
+  // Weapons whose attacks are on offer: in a hand (a two-handed weapon needs both hands)
+  const heldWeapons = (c) => ((c && c.items) || []).filter((it) => it && it.weapon && String(it.name || '').trim() && (it.twoHanded ? it.eqL && it.eqR : it.eqL || it.eqR));
   // Magic properties. Charges only exist on magic items, from 0 up to Max Charges.
   const MAGIC_TEXT = [['type', 'Type'], ['attunement', 'Attunement']];
   const maxOf = (it) => Math.max(0, Math.floor(Number(it && it.magicProps && it.magicProps.maxCharges) || 0));
@@ -3546,8 +3679,10 @@
     if (have) have.qty = effQty(have) + inc.qty;
     else {
       const mi = { magic: !!inc.magic, magicProps: cleanMagic(inc.magicProps), charges: inc.charges };
-      ch.items.push({ name: inc.name, qty: inc.qty, charges: clampCharges(mi), desc: inc.desc || '',
-        wearable: !!inc.wearable, weapon: !!inc.weapon, magic: !!inc.magic, buffs: cleanBuffs(inc.buffs), weaponProps: cleanWeapon(inc.weaponProps), magicProps: mi.magicProps });
+      const ni = { name: inc.name, qty: inc.qty, charges: clampCharges(mi), desc: inc.desc || '',
+        wearable: !!inc.wearable, weapon: !!inc.weapon, magic: !!inc.magic, buffs: cleanBuffs(inc.buffs), weaponProps: cleanWeapon(inc.weaponProps), magicProps: mi.magicProps };
+      if (ni.weapon) { ni.attacks = attacksFor(inc.name, inc.attacks, inc.weaponProps); if (typeof inc.twoHanded === 'boolean') ni.twoHanded = inc.twoHanded; fixWeapon(ni); }
+      ch.items.push(ni);
     }
     ch.giftLog.push(gift.id);
     if (ch.giftLog.length > 200) ch.giftLog.splice(0, ch.giftLog.length - 200);
@@ -3605,13 +3740,13 @@
         bf.hidden = !bf.hidden; if (bf.hidden) cur.buffOpen.delete(it); else cur.buffOpen.add(it);
         e.currentTarget.setAttribute('aria-expanded', String(!bf.hidden));
       } }),
-      h('button', { class: 'btn', type: 'button', text: 'GIVE', 'aria-expanded': 'false', onclick: (e) => {
+      cur.viewOnly ? null : h('button', { class: 'btn', type: 'button', text: 'GIVE', 'aria-expanded': 'false', onclick: (e) => {
         give.el.hidden = !give.el.hidden; e.currentTarget.setAttribute('aria-expanded', String(!give.el.hidden));
         if (!give.el.hidden) give.load();
       } }));
     const flags = h('div', { class: 'iflags' }, FLAGS.map(([k, label]) => {
       const cb = h('input', { type: 'checkbox', checked: !!it[k], 'aria-label': label });
-      cb.addEventListener('change', () => { it[k] = cb.checked; if (k === 'wearable' && !cb.checked) it.eqB = false; touch(); rebuild('items'); });
+      cb.addEventListener('change', () => { it[k] = cb.checked; if (k === 'wearable' && !cb.checked) it.eqB = false; if (k === 'weapon') fixWeapon(it); touch(); rebuild('items'); });
       return h('label', { class: 'chk' }, cb, h('span', { text: label }));
     }));
     const desc = h('div', { class: 'idesc' }, flags, wp, mg, acts, bf, give.el, field('Description', growArea('items.' + i + '.desc', 'Item description')));
@@ -3660,13 +3795,36 @@
   function weaponCard(i) {
     const it = cur.ch.items[i];
     if (!it.weaponProps || typeof it.weaponProps !== 'object') it.weaponProps = {};
+    fixWeapon(it);
     const fld = ([k, label]) => {
       const path = 'items.' + i + '.weaponProps.' + k;
       return k === 'effect' ? h('div', { class: 'wp-wide' }, field(label, area(path, 'Weapon ' + label)))
         : field(label, txtIn(path, 'Weapon ' + label, 200));
     };
-    return h('div', { class: 'wprops' }, h('h4', { class: 'subsec', text: 'Weapon' }), h('div', { class: 'wpgrid' }, WEAPON_PROPS.map(fld)));
+    const chk = (key, label) => h('label', { class: 'chk' }, bind(h('input', { type: 'checkbox', 'aria-label': label }), 'items.' + i + '.' + key, 'check'), h('span', { text: label }));
+    return h('div', { class: 'wprops' }, h('h4', { class: 'subsec', text: 'Weapon' }),
+      h('div', { class: 'wpgrid' }, WEAPON_PROPS.map(fld), chk('twoHanded', 'Two-handed'), chk('loaded', 'Loaded')),
+      h('h4', { class: 'subsec', text: 'Attacks' }),
+      h('p', { class: 'hint', text: 'Listed in the Actions menu while this weapon is in your hand' + (it.twoHanded ? 's (both of them).' : '.') }),
+      attackList('items.' + i + '.attacks', it.attacks, 'items', true, it.name));
   }
+  // An editable list of attacks (a weapon's, or the character's own). Each: name, cost, Attack Dmg, range, damage type, effect.
+  function attackList(path, list, tab, isWeapon, defName) {
+    const card = (a, j) => {
+      const p = path + '.' + j + '.';
+      return h('div', { class: 'atk' },
+        h('div', { class: 'iline atkl' }, nameIn(p + 'name', 'Attack name', 60), txtIn(p + 'cost', 'Attack cost, for example 2 AP', 20),
+          h('button', { class: 'btn small', type: 'button', text: 'REMOVE', 'aria-label': 'Remove attack ' + (a.name || ''), onclick: () => { list.splice(j, 1); touch(); rebuild(tab); } })),
+        h('div', { class: 'wpgrid' }, field('Attack Dmg', txtIn(p + 'dmg', 'Attack Dmg', 100)), field('Range', txtIn(p + 'range', 'Attack range', 60)), field('Dmg Type', txtIn(p + 'damage', 'Attack damage type', 60)),
+          isWeapon ? h('label', { class: 'chk' }, bind(h('input', { type: 'checkbox', 'aria-label': 'Needs the weapon loaded' }), p + 'needsLoad', 'check'), h('span', { text: 'Needs loading' })) : null,
+          h('div', { class: 'wp-wide' }, field('Effect', area(p + 'effect', 'Attack effect')))));
+    };
+    return h('div', { class: 'attacks' }, list.map(card),
+      h('button', { class: 'btn small', type: 'button', text: 'ADD ATTACK', 'data-add-attack': isWeapon ? 'weapon' : 'character', onclick: () => {
+        list.push(cleanAttack({ name: isWeapon ? String(defName || '').trim() : '' })); touch(); rebuild(tab);
+      } }));
+  }
+
 
   // Item buffs card: pick a talent or skill, give an amount (negative works), say whether the item must be held and/or worn.
   function buffCard(i) {
@@ -3749,7 +3907,7 @@
       try {
         await backend.giveItem(ch.id, to.ch.id, { name: String(it.name).trim(), qty: n, charges: clampCharges(it), desc: it.desc || '',
           wearable: !!it.wearable, weapon: !!it.weapon, magic: !!it.magic, buffs: cleanBuffs(it.buffs), weaponProps: it.weapon ? cleanWeapon(it.weaponProps) : {},
-          magicProps: it.magic ? cleanMagic(it.magicProps) : {} });
+          attacks: it.weapon ? cleanAttacks(it.attacks) : [], twoHanded: !!(it.weapon && it.twoHanded), magicProps: it.magic ? cleanMagic(it.magicProps) : {} });
       } catch (e) { msg.textContent = e.message; send.disabled = false; return; }
       const left = have - n;
       if (left <= 0) { ch.items.splice(ch.items.indexOf(it), 1); cur.itemOpen.delete(it); } else it.qty = left;
@@ -3826,12 +3984,16 @@
   }
   function panelAbilities() {
     if (!Array.isArray(cur.ch.customActions)) cur.ch.customActions = [];
+    if (!Array.isArray(cur.ch.attacks)) cur.ch.attacks = [unarmedStrike()];
     return [
       sec('Abilities and fighting styles'),
       h('div', {}, cur.ch.abilities.map((_, i) => abilityCard(i))),
       h('button', { class: 'btn small', type: 'button', text: 'ADD ABILITY', onclick: () => {
         cur.ch.abilities.push({ name: '', desc: '' }); touch(); rebuild('abilities');
       } }),
+      sec('Attacks'),
+      h('p', { class: 'hint', text: 'Your own attacks, always listed in the Actions menu. A weapon in your hand adds its attacks (set them on the ITEMS tab).' }),
+      attackList('attacks', cur.ch.attacks, 'abilities', false),
       sec('Custom actions'),
       h('p', { class: 'hint', text: 'Actions of your own, listed in the Actions menu. Give a cost like 2 AP or 1 SP to get a button that spends it in an encounter.' }),
       h('div', {}, cur.ch.customActions.map((_, i) => customActionCard(i))),
@@ -3855,6 +4017,7 @@
     const y = window.scrollY;
     const fn = { items: panelItems, abilities: panelAbilities }[id];
     cur.panels[id].replaceChildren(...fn());
+    if (cur.viewOnly && !(id === 'items' && cur.qmItems)) lockPanel(cur.panels[id]);
     window.scrollTo(0, y);
   }
 

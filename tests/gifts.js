@@ -194,7 +194,7 @@ async function scenario(label, makeAs) {
   R.setv(R.$('giveTo'), val('Beta')); R.setv(R.$('giveName'), 'Mace');
   R.setv(R.$('giveWtype'), 'Mace'); R.setv(R.$('giveWdmg'), 'BP+1D6'); R.setv(R.$('giveWeffect'), 'Ignores up to 3 AC');
   R.click(R.$('giveBtn')); await wait(200); await kick(S);
-  ok(await until(async () => { const r = (await stored(S, beta)).items.find((x) => x.name === 'Mace'); return r && r.weapon === true && r.weaponProps.type === 'Mace' && r.weaponProps.dmg === 'BP+1D6' && r.weaponProps.effect === 'Ignores up to 3 AC' && r.weaponProps.range === ''; }), P('weapon properties arrive with a QM gift'));
+  ok(await until(async () => { const r = (await stored(S, beta)).items.find((x) => x.name === 'Mace'); return r && r.weapon === true && r.weaponProps.type === 'Mace' && r.attacks[0].dmg === 'BP+1D6' && r.attacks[0].name === 'Mace' && r.weaponProps.effect === 'Ignores up to 3 AC' && r.attacks[0].range === '' && !('dmg' in r.weaponProps); }), P('weapon properties arrive with a QM gift'));
   ok(R.$('giveWtype').value === '' && R.$('giveWtype').closest('.wpgrid').hidden, P('and the weapon fields clear and hide after giving'));
   await bS.giveItem(beta.id, alpha.id, { name: 'Mace', qty: 1, weapon: true, weaponProps: { type: 'Mace', cr: '1D4' } });
   await sheet(S, alpha); await kick(S);

@@ -27,6 +27,8 @@
  *             setExplodeTokens(charId, 0..10)   (spend or hand out Explode Tokens; the owner, or a QM of the character's campaign),
  *             dealDamage(attackerId, targetId, amount)   (an attack during an encounter adds damage taken to the target), qmDealDamage(campaignId, targetId, amount)   (a QM adds damage taken to any character in their campaign, in or out of an encounter), setCharacterInactive(campaignId, charId, bool)   (QM only; campaign.inactive lists the ids), codexRecord(campaignId, 'mobs'|'items', key, entry) / codexRemove(campaignId, kind, key)   (campaign.codex; any member records once, only a QM removes),
  *             setVital(charId, 'apRemaining'|'spRemaining', value)   (spend points during an encounter; owner or QM; 'bt'|'wt'|'bleeding' any time),
+ *             setItems(charId, items) -> itemsEdit (QM only), loadWeapon(charId, itemUid, apLeft) -> {items, itemsEdit} (owner or QM, encounter),
+ *             setLoaded(charId, itemUid, loaded) -> {items, itemsEdit} (owner or QM),
  *             startTurn(charId, spGain, spMax, apMax?) -> {applied, ...}     (AP back to full, SP +spGain unless AP was 0; once per turn change)
  *             (listCampaigns rows carry `encounter`: null, or { id, startedAt, round, turn, moved, initiatives: { charId: {die, ib, total, tb, by} } })
  *             turn order = highest total first, ties by the random tb (see BSHBackend.turnOrder)
@@ -446,6 +448,24 @@
         if (error) throw friendly(error, 'Could not change that.');
       },
 
+      // A QM replaces another character's item list; returns the new itemsEdit stamp
+      async setItems(characterId, items) {
+        const { data, error } = await sb.rpc('set_items', { p_character: characterId, p_items: items });
+        if (error) throw friendly(error, 'Could not save the items.');
+        return data;
+      },
+      // Load: spend AP (apLeft is the AP left afterwards), take 1 ammo, mark the weapon loaded. Returns { items, itemsEdit }.
+      async loadWeapon(characterId, itemUid, apLeft) {
+        const { data, error } = await sb.rpc('load_weapon', { p_character: characterId, p_item: itemUid, p_ap: apLeft });
+        if (error) throw friendly(error, 'Could not load that weapon.');
+        return data;
+      },
+      async setLoaded(characterId, itemUid, loaded) {
+        const { data, error } = await sb.rpc('set_loaded', { p_character: characterId, p_item: itemUid, p_loaded: !!loaded });
+        if (error) throw friendly(error, 'Could not change that weapon.');
+        return data;
+      },
+
       // comboLeaderId: the Finisher starts the Combo Attack that Leader set up (see setCombo); the Leader's roll follows (comboLeaderAttack)
       async startAttack(attackerId, targetId, total, power, text, comboLeaderId) {
         const { data, error } = await sb.rpc('start_attack', { p_attacker: attackerId, p_target: targetId, p_total: total, p_power: power, p_text: text || '', p_combo: comboLeaderId || null });
@@ -640,6 +660,9 @@
         // NPC flags and an NPC's campaign are not editable from a character save
         const old = i >= 0 ? list[i] : null;
         ch.isNpc = !!(old && old.isNpc); ch.npcVisible = !!(old && old.npcVisible); ch.sheetHidden = !!(old && old.sheetHidden);
+        if (old && JSON.stringify(old.itemsEdit || null) !== JSON.stringify(ch.itemsEdit || null)) {   // a stale copy: keep items changed by a QM, a load or a shot
+          ch.items = old.items; if (old.itemsEdit) ch.itemsEdit = old.itemsEdit; else delete ch.itemsEdit;
+        }
         if (ch.isNpc) ch.campaignId = old.campaignId;
         if (i >= 0) list[i] = ch; else list.push(ch);
         wr(CH(uid), list);
@@ -819,7 +842,8 @@
                   wearable: item.wearable === true, weapon: item.weapon === true, magic: item.magic === true,
                   weaponProps: item.weaponProps && typeof item.weaponProps === 'object' ? item.weaponProps : {},
                   magicProps: item.magicProps && typeof item.magicProps === 'object' ? item.magicProps : {},
-                  buffs: Array.isArray(item.buffs) && item.buffs.length <= 30 ? item.buffs : [] } });
+                  buffs: Array.isArray(item.buffs) && item.buffs.length <= 30 ? item.buffs : [],
+                  twoHanded: item.twoHanded === true, attacks: Array.isArray(item.attacks) && item.attacks.length <= 20 ? item.attacks : [] } });
         wr(GIFTS, gifts);
       },
 
@@ -944,6 +968,54 @@
         if (f.email !== uid && !isQmOf(g, uid)) throw fail('You can only spend points for your own characters.');
         f.c.vitals = Object.assign({}, f.c.vitals, { [key]: value });
         wr(CH(f.email), f.list);
+      },
+
+      async setItems(characterId, items) {
+        if (!Array.isArray(items) || items.length > 300 || JSON.stringify(items).length > 400000) throw fail('That item list is not valid.');
+        const f = localFind(characterId);
+        if (!f || !f.c.campaignId) throw fail('That character is not in a campaign.');
+        const g = rd(GR, []).find((x) => x.id === f.c.campaignId);
+        if (!g || !isQmOf(g, uid)) throw fail('Only a QM can change another character\'s items.');
+        const stamp = { at: newId(), by: uid, why: 'qm' };
+        f.c.items = JSON.parse(JSON.stringify(items)); f.c.itemsEdit = stamp;
+        wr(CH(f.email), f.list);
+        return stamp;
+      },
+      async loadWeapon(characterId, itemUid, apLeft) {
+        if (typeof apLeft !== 'number' || !isFinite(apLeft) || apLeft < -1000 || apLeft > 100000) throw fail('That number is not valid.');
+        const f = localFind(characterId);
+        if (!f || !f.c.campaignId) throw fail('That character is not in a campaign.');
+        const g = rd(GR, []).find((x) => x.id === f.c.campaignId);
+        if (f.email !== uid && !(g && isQmOf(g, uid))) throw fail('You can only load weapons for your own characters.');
+        if (!g || !g.encounter) throw fail('Weapons can only be loaded during an encounter.');
+        const items = Array.isArray(f.c.items) ? f.c.items : [], w = items.find((x) => x && x.uid === itemUid && x.weapon === true);
+        if (!w) throw fail('That weapon is gone.');
+        if (w.loaded === true) throw fail('That weapon is already loaded.');
+        const ammo = String((w.weaponProps && w.weaponProps.ammo) || '').trim();
+        if (ammo) {
+          const qOf = (x) => (typeof x.qty === 'number' ? x.qty : x.qty == null || x.qty === '' ? 1 : 0);
+          const a = items.find((x) => x && x !== w && String(x.name || '').trim().toLowerCase() === ammo.toLowerCase() && qOf(x) >= 1);
+          if (!a) throw fail('No ' + ammo + ' left to load.');
+          a.qty = qOf(a) - 1;
+        }
+        w.loaded = true;
+        const stamp = { at: newId(), by: uid, why: 'load' };
+        f.c.items = items; f.c.itemsEdit = stamp; f.c.vitals = Object.assign({}, f.c.vitals, { apRemaining: apLeft });
+        wr(CH(f.email), f.list);
+        return { items: JSON.parse(JSON.stringify(items)), itemsEdit: stamp };
+      },
+      async setLoaded(characterId, itemUid, loaded) {
+        const f = localFind(characterId);
+        if (!f || !f.c.campaignId) throw fail('That character is not in a campaign.');
+        const g = rd(GR, []).find((x) => x.id === f.c.campaignId);
+        if (f.email !== uid && !(g && isQmOf(g, uid))) throw fail('You can only change your own characters.');
+        const items = Array.isArray(f.c.items) ? f.c.items : [], w = items.find((x) => x && x.uid === itemUid);
+        if (!w) throw fail('That weapon is gone.');
+        w.loaded = !!loaded;
+        const stamp = { at: newId(), by: uid, why: loaded ? 'load' : 'fire' };
+        f.c.itemsEdit = stamp;
+        wr(CH(f.email), f.list);
+        return { items: JSON.parse(JSON.stringify(items)), itemsEdit: stamp };
       },
 
       async startAttack(attackerId, targetId, total, power, text, comboLeaderId) {
