@@ -2536,7 +2536,26 @@
     fill($('charList'), pcs); fill($('npcList'), npcs);
     $('noChars').hidden = all.length > 0;
     $('npcHead').hidden = !npcs.length;
+    // NEW NPC: for a QM of at least one campaign (pick which one when there are several)
+    const qmCamps = state.campaigns.filter(iAmQm).sort((a, b) => a.name.localeCompare(b.name));
+    const sel = $('newNpcCamp'), keep = sel.value;
+    sel.replaceChildren(...qmCamps.map((g) => h('option', { value: g.id, text: g.name })));
+    if (qmCamps.some((g) => g.id === keep)) sel.value = keep;
+    $('newNpcBtn').hidden = !qmCamps.length; $('newNpcPick').hidden = qmCamps.length < 2;
   }
+
+  $('newNpcBtn').addEventListener('click', async () => {
+    const g = state.campaigns.find((x) => x.id === $('newNpcCamp').value);
+    if (!g || !iAmQm(g)) return;
+    $('listMsg').textContent = '';
+    const c = normalizeChar({ id: uuid(), created: Date.now(), updated: Date.now() });
+    try {
+      await backend.createNpc(g.id, c);
+      c.campaignId = g.id; c.isNpc = true; c.npcVisible = false;
+      state.chars.unshift(c);
+      go('character-' + c.id);
+    } catch (e) { $('listMsg').textContent = e.message; }
+  });
 
   $('newCharBtn').addEventListener('click', () => {
     const c = normalizeChar({ id: uuid(), created: Date.now(), updated: Date.now() });
@@ -2651,6 +2670,20 @@
   const numIn = (path, label, ph = '0') => bind(h('input', { type: 'number', step: 'any', class: 'num', placeholder: ph, 'aria-label': label }), path, 'num');
   const txtIn = (path, label, max = 60) => bind(h('input', { type: 'text', maxlength: max, 'aria-label': label, autocomplete: 'off' }), path, 'text');
   const area = (path, label, ph = '') => bind(h('textarea', { 'aria-label': label, placeholder: ph }), path, 'text');
+  // a text box that grows to show all of its text (used so long item/ability names and descriptions are never cut off)
+  const fit = (el) => { if (el.offsetParent === null) return; el.style.height = 'auto'; el.style.height = el.scrollHeight + 2 + 'px'; };
+  const grow = (el) => {
+    el.addEventListener('input', () => fit(el));
+    if (typeof ResizeObserver === 'function') new ResizeObserver(() => fit(el)).observe(el); else requestAnimationFrame(() => fit(el));
+    return el;
+  };
+  const growArea = (path, label) => grow(area(path, label));
+  // a one-line-looking name that wraps onto more lines when it is long; Enter does not add a line break
+  const nameIn = (path, label, max = 60) => {
+    const el = grow(bind(h('textarea', { class: 'wrapname', rows: '1', maxlength: max, 'aria-label': label, autocomplete: 'off' }), path, 'text'));
+    el.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); el.blur(); } });
+    return el;
+  };
   const field = (label, control, cls = '') => h('label', { class: 'fld ' + cls }, h('span', { class: 'lbl', text: label }), control);
   const out = (key, cls = 'val', tag = 'span') => { const e = h(tag, { class: cls }); cur.outs[key] = e; return e; };
   const sec = (t) => h('h3', { class: 'sec', text: t });
@@ -3079,7 +3112,7 @@
       });
     }
     const chev = h('button', { class: 'chev', type: 'button', 'aria-label': 'Show or hide the description' });
-    const name = txtIn('items.' + i + '.name', 'Item name', 60);
+    const name = nameIn('items.' + i + '.name', 'Item name', 60);
     const qtyIn = numIn('items.' + i + '.qty', 'Quantity', '1');
     const held = HANDS.filter(([k]) => it[k]).map((x) => x[3]).join('') + (it.eqB ? 'B' : '');
     card.classList.toggle('held', !!held);
@@ -3120,7 +3153,7 @@
       cb.addEventListener('change', () => { it[k] = cb.checked; if (k === 'wearable' && !cb.checked) it.eqB = false; touch(); rebuild('items'); });
       return h('label', { class: 'chk' }, cb, h('span', { text: label }));
     }));
-    const desc = h('div', { class: 'idesc' }, flags, wp, mg, acts, bf, give.el, field('Description', area('items.' + i + '.desc', 'Item description')));
+    const desc = h('div', { class: 'idesc' }, flags, wp, mg, acts, bf, give.el, field('Description', growArea('items.' + i + '.desc', 'Item description')));
     const setOpen = (open) => {
       if (open) cur.itemOpen.add(it); else cur.itemOpen.delete(it);
       card.classList.toggle('open', open); desc.hidden = !open;
@@ -3287,8 +3320,8 @@
     const ab = cur.ch.abilities[i];
     const card = h('div', { class: 'item' });
     const chev = h('button', { class: 'chev', type: 'button', 'aria-label': 'Show or hide the description' });
-    const desc = h('div', { class: 'idesc' }, field('Description', area('abilities.' + i + '.desc', 'Ability description')));
-    const name = txtIn('abilities.' + i + '.name', 'Ability name', 60);
+    const desc = h('div', { class: 'idesc' }, field('Description', growArea('abilities.' + i + '.desc', 'Ability description')));
+    const name = nameIn('abilities.' + i + '.name', 'Ability name', 60);
     const setOpen = (open) => {
       if (open) cur.itemOpen.add(ab); else cur.itemOpen.delete(ab);
       card.classList.toggle('open', open); desc.hidden = !open;

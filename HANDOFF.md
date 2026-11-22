@@ -1,5 +1,5 @@
 # Handoff
-Last updated 2026-11-20 (evening). Overwrite each time; keep under 40 lines. Change record: HISTORY.md (don't read unless asked).
+Last updated 2026-11-21 (evening). Overwrite each time; keep under 40 lines. Change record: HISTORY.md (don't read unless asked).
 
 ## Goal
 BLOODSOUP HELL Companion: one PWA for Ricky's homemade tabletop RPG, with Supabase accounts, campaigns, encounters and NPCs.
@@ -14,7 +14,9 @@ BLOODSOUP HELL Companion: one PWA for Ricky's homemade tabletop RPG, with Supaba
 - Tests at the last full run (2026-11-20): every file passed, including new `guideui.js`.
 
 ## In progress
-- Nothing mid-flight. `main` is version 1 (guide); the last build Ricky deployed is 0.6 rev2 until he uploads the new zip.
+- On `next` (unpublished, no database change, tests pass): item/ability names and descriptions now wrap and grow (no cut-off text); NEW NPC button on the Characters page for QMs (campaign picker when QM of several). Test selectors for the item name changed to `.iline .wrapname`.
+- Batch plan: 1 quick wins (Tracking crit automation still open: needs Ricky's answer on whose next hit, and a database change), 2 combat rules (advantage/disadvantage, manual damage), 3 campaign/UI, 4 bigger features. New Tracks section in BACKLOG.md: mechanics for all abilities.
+-  `main` is version 1 (guide); the last build Ricky deployed is 0.6 rev2 until he uploads the new zip.
 
 ## Decisions
 - Design assumptions Ricky has not explicitly reviewed:

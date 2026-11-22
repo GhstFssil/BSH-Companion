@@ -328,6 +328,7 @@
   .item { border: 2px solid var(--ink); padding: .4rem; margin-bottom: .6rem; }
   .iline { display: grid; grid-template-columns: 1.7rem minmax(0, 1fr) 1.5rem 3rem 3.4rem 4.8rem; gap: .3rem; align-items: center; cursor: pointer; }
   .iline input { padding: .5rem .3rem; border-width: 2px; }
+  .iline textarea.wrapname { padding: .5rem .3rem; border-width: 2px; min-height: 0; height: auto; resize: none; overflow: hidden; line-height: 1.2; font: inherit; }
   .iline input.num { text-align: center; padding-left: .05rem; padding-right: .05rem; }
   .iline .btn { width: 100%; min-height: 0; padding: .5rem .1rem; font-size: max(8px, calc(.68rem + var(--fs))); letter-spacing: 0; }
   .iline.abl { grid-template-columns: 1.7rem minmax(0, 1fr) 4.8rem; }
@@ -619,6 +620,8 @@
       <button class="btn" id="newCharBtn" type="button"><span class="px" data-px="NEW CHARACTER"></span></button>
       <button class="btn" id="importCharBtn" type="button"><span class="px" data-px="IMPORT CHARACTER"></span></button>
       <input type="file" id="importFile" accept=".json,application/json" hidden aria-label="Character sheet file">
+      <label class="fld" id="newNpcPick" hidden><span class="lbl">New NPC goes to campaign</span><select id="newNpcCamp" aria-label="Campaign for the new NPC"></select></label>
+      <button class="btn" id="newNpcBtn" type="button" hidden><span class="px" data-px="NEW NPC"></span></button>
       <p class="note" id="noChars">No characters yet.</p>
       <p class="msg" id="listMsg" role="alert"></p>
       <div class="char-list" id="charList"></div>

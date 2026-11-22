@@ -25,7 +25,7 @@ async function scenario(label, makeAs) {
   };
   const sheet = async (A, c) => { A.go('characters'); await wait(150); A.go('character-' + c.id); await wait(100); A.tab('items'); await wait(30); };
   const cards = (A) => [...A.d.querySelectorAll('#panel-items .item')];
-  const cardOf = (A, name) => cards(A).find((c) => c.querySelector('.iline input[type=text]').value === name);
+  const cardOf = (A, name) => cards(A).find((c) => c.querySelector('.iline .wrapname').value === name);
   const qtyOf = (A, name) => { const c = cardOf(A, name); return c ? c.querySelector('.iline input.num').value : null; };
   const expand = (c) => { if (c.querySelector('.idesc').hidden) c.querySelector('.chev').dispatchEvent(new (c.ownerDocument.defaultView.MouseEvent)('click', { bubbles: true })); };
   const stored = async (A, c) => (await (await raw(A)).listCharacters()).find((x) => x.id === c.id);

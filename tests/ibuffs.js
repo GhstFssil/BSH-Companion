@@ -32,7 +32,7 @@ const BSH = require('../engine.js');
   const c = w.BSH.blankCharacter(); c.id = w.crypto.randomUUID(); c.info.name = 'Tester'; c.items = [{ name: 'Ring', qty: 1, charges: null, desc: '', wearable: true }, { name: 'Club', qty: 1, charges: null, desc: '' }];
   await b.saveCharacter(c);
   A.go('characters'); await wait(150); A.go('character-' + c.id); await wait(100); A.tab('items'); await wait(30);
-  const card = (n) => [...A.d.querySelectorAll('#panel-items .item')].find((x) => x.querySelector('.iline input[type=text]').value === n);
+  const card = (n) => [...A.d.querySelectorAll('#panel-items .item')].find((x) => x.querySelector('.iline .wrapname').value === n);
   const open = (n) => { const x = card(n); if (x.querySelector('.idesc').hidden) A.click(x.querySelector('.chev')); return x; };
   const btn = (root, t) => [...root.querySelectorAll('button')].find((x) => x.textContent.startsWith(t));
   let ring = open('Ring');

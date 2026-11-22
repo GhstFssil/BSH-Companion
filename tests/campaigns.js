@@ -171,6 +171,9 @@ async function scenario(label, makeAs) {
   const npcBtn = (A) => [...A.d.querySelectorAll('#npcActions button')].find((b) => b.textContent === 'NEW NPC');
   await open(S, 'campaign-' + NC); await open(R, 'campaign-' + NC); await open(V, 'campaign-' + NC);
   ok(await waitFor(() => npcBtn(S)) && !npcBtn(R) && !npcBtn(V), P('only the QM gets NEW NPC'));
+  { const opts = (A) => [...A.$('newNpcCamp').options].map((o) => o.value);
+    S.go('characters'); R.go('characters'); await wait(60);
+    ok(!S.$('newNpcBtn').hidden && opts(S).includes(NC) && !opts(R).includes(NC), P('Characters page: NEW NPC offers only campaigns you are QM of')); }
   S.click(npcBtn(S));
   ok(await waitFor(() => S.vis().join() === 'sheet'), P('NEW NPC opens the new NPC sheet'));
   S.tab('info');
