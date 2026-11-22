@@ -194,6 +194,25 @@ async function scenario(label, makeAs) {
   ok(await waitFor(() => crows(R).length === 1), P('shown NPC appears for a player'));
   r0 = crows(R)[0];
   ok(r0.name === 'Old Hag' && r0.btns.join() === 'SKILL CHECK,ACTIONS' && !npcBtn(R), P('player sees no toggle and no NEW NPC'));
+  // QM damage roller: only the QM has the button; roll first, then apply
+  { const dbtn = (A) => A.$('dmgBtn'), hag = async () => (await (await rawR(S)).listCampaignCharacters(NC)).find((x) => x.ch.info.name === 'Old Hag').ch;
+    await open(S, 'campaign-' + NC);
+    ok(!!(await waitFor(() => dbtn(S))) && !dbtn(R), P('only the QM gets ROLL DAMAGE'));
+    S.click(dbtn(S)); await wait(20);
+    const d0 = Number((await hag()).vitals.damage) || 0;
+    S.setv(S.$('dmgFormula'), 'BP+2'); S.click(S.$('dmgRoll'));
+    ok(/uses BP/.test(S.$('dmgOut').textContent) && S.$('dmgApply').disabled, P('BP needs a source: ' + S.$('dmgOut').textContent));
+    S.setv(S.$('dmgFormula'), 'banana'); S.click(S.$('dmgRoll')); ok(/Use numbers, dice/.test(S.$('dmgOut').textContent), P('a bad formula is explained'));
+    S.setv(S.$('dmgFormula'), '4+2'); S.click(S.$('dmgRoll'));
+    ok(!S.$('dmgApply').disabled && /Damage 4 \+2 = 6/.test(S.$('dmgOut').textContent) && /APPLY/.test(S.$('dmgOut').textContent), P('rolled, waiting for APPLY: ' + S.$('dmgOut').textContent));
+    ok((Number((await hag()).vitals.damage) || 0) === d0, P('nothing is dealt until APPLY'));
+    S.$('dmgIgnoreAc').checked = true; S.$('dmgCrit').checked = true; S.$('dmgIgnoreAc').dispatchEvent(new S.w.Event('change', { bubbles: true }));
+    ok(S.$('dmgApply').disabled, P('changing an option clears the roll'));
+    S.click(S.$('dmgRoll')); ok(/AC ignored/.test(S.$('dmgOut').textContent) && /doubled = 12/.test(S.$('dmgOut').textContent), P('ignore AC + critical: ' + S.$('dmgOut').textContent));
+    S.click(S.$('dmgApply'));
+    ok(await waitFor(async () => (Number((await hag()).vitals.damage) || 0) === d0 + 12), P('APPLY deals the damage')); 
+    ok(/Applied/.test(S.$('dmgOut').textContent), P('and says so'));
+    S.click(S.$('dmgClose')); }
   R.click(r0.el.querySelector('.char-btn'));
   ok(await waitFor(() => R.vis().join() === 'sheet'), P('player can open the NPC'));
   R.tab('info');

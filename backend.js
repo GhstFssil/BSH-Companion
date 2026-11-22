@@ -25,7 +25,7 @@
  *             setCombo(leaderId, finisherId, skill, level, total, text), cancelCombo(leaderId), comboLeaderAttack(campaignId, attackId, total, power, text),
  *             cancelComboAttack(campaignId, attackId)   (Combo Attacks: encounter.combos[leaderId] waits for the Finisher's turn; the attack then carries `combo`)
  *             setExplodeTokens(charId, 0..10)   (spend or hand out Explode Tokens; the owner, or a QM of the character's campaign),
- *             dealDamage(attackerId, targetId, amount)   (an attack during an encounter adds damage taken to the target),
+ *             dealDamage(attackerId, targetId, amount)   (an attack during an encounter adds damage taken to the target), qmDealDamage(campaignId, targetId, amount)   (a QM adds damage taken to any character in their campaign, in or out of an encounter),
  *             setVital(charId, 'apRemaining'|'spRemaining', value)   (spend points during an encounter; owner or QM),
  *             startTurn(charId, spGain, spMax, apMax?) -> {applied, ...}     (AP back to full, SP +spGain unless AP was 0; once per turn change)
  *             (listCampaigns rows carry `encounter`: null, or { id, startedAt, round, turn, moved, initiatives: { charId: {die, ib, total, tb, by} } })
@@ -485,6 +485,10 @@
       async dealDamage(attackerId, targetId, amount) {
         const { error } = await sb.rpc('deal_damage', { p_attacker: attackerId, p_target: targetId, p_amount: amount });
         if (error) throw friendly(error, 'Could not apply the attack.');
+      },
+      async qmDealDamage(campaignId, targetId, amount) {
+        const { error } = await sb.rpc('qm_deal_damage', { p_campaign: campaignId, p_target: targetId, p_amount: amount });
+        if (error) throw friendly(error, 'Could not apply the damage.');
       },
 
       async startTurn(characterId, spGain, spMax, apMax) {
@@ -1050,6 +1054,17 @@
         const qm = isQmOf(g, uid);
         if (a.email !== uid && !qm) throw fail('You can only attack with your own characters.');
         if (t.c.isNpc && !qm && (!t.c.npcVisible || t.c.sheetHidden)) throw fail('You cannot attack that character.');
+        const v = Object.assign({}, t.c.vitals);
+        v.damage = Math.round(((Number(v.damage) || 0) + amount) * 100) / 100;
+        t.c.vitals = v;
+        wr(CH(t.email), t.list);
+      },
+      async qmDealDamage(campaignId, targetId, amount) {
+        if (typeof amount !== 'number' || !isFinite(amount) || amount < 0 || amount > 100000) throw fail('That number is not valid.');
+        const g = rd(GR, []).find((x) => x.id === campaignId);
+        if (!g || !isQmOf(g, uid)) throw fail('Only a QM can do that.');
+        const t = localFind(targetId);
+        if (!t || t.c.campaignId !== campaignId) throw fail('That character is not in this campaign.');
         const v = Object.assign({}, t.c.vitals);
         v.damage = Math.round(((Number(v.damage) || 0) + amount) * 100) / 100;
         t.c.vitals = v;

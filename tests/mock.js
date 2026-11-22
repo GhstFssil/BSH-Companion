@@ -185,6 +185,17 @@ function createMock() {
         c.data = Object.assign({}, c.data, { info: Object.assign({}, (c.data || {}).info, { explodeTokens: body.p_value }) });
         return send(204);
       }
+      if (p === '/rest/v1/rpc/qm_deal_damage') {
+        if (!me) return send(401, { message: 'JWT required' });
+        const P = (message) => send(400, { code: 'P0001', message });
+        if (!db.members.some((m) => m.campaign_id === body.p_campaign && m.user_id === me && m.role === 'qm')) return P('Only a QM can do that.');
+        if (!(body.p_amount >= 0) || body.p_amount > 100000) return P('That number is not valid.');
+        const t = db.characters.find((x) => x.id === body.p_target);
+        if (!t || t.campaign_id !== body.p_campaign) return P('That character is not in this campaign.');
+        const v = (t.data || {}).vitals || {};
+        t.data = Object.assign({}, t.data, { vitals: Object.assign({}, v, { damage: (Number(v.damage) || 0) + body.p_amount }) });
+        return send(204);
+      }
       if (p === '/rest/v1/rpc/deal_damage') {
         if (!me) return send(401, { message: 'JWT required' });
         const P = (message) => send(400, { code: 'P0001', message });

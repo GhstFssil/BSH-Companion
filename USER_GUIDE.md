@@ -91,6 +91,8 @@ Your roll is a d12 plus your SA. A natural 1 gives -5 and a natural 12 gives +5.
 
 **Combo Attacks** (3 AP). From the Actions menu, the **Leader** picks a **Finisher** (another character in the encounter) and one of the 8 combo skills, then rolls a d20. The result sets the Combo Level (0, 10, 15, 20 or 25), and the combo is held until the Leader's next turn begins. On their turn, the Finisher ticks **Combo Attack with &lt;Leader&gt;** when making a weapon attack. The Leader is then prompted to roll an attack, and the target defends against both. The bonus applies to both attackers. If both miss, the Finisher rerolls a plain d12. The Finisher can decline, which refunds the Leader's 3 AP. A combo also ends if either character leaves the encounter.
 
+**Advantage and disadvantage.** Next to the roll buttons (skill checks, initiative, attacks, combo rolls and block/parry) is an **ADV / DIS** stepper. Tap **ADV** once for advantage: the app rolls two dice and keeps the better one. Tap twice for great advantage (three dice, keep the best). **DIS** does the same with the worse die, and one ADV and one DIS cancel out. Past two taps in either direction the roll simply counts as the highest number on the die (or a 1). Attacks and blocks use d12s; other rolls use d20s. The stepper only affects the app's own ROLL button and resets after each roll. If you roll your own dice, enter the one you keep.
+
 **Explode Tokens (ET).** A character holds 0 to 10 (INFO tab), handed out by the QM. Beside every roll button is a **Spend ET on this roll** stepper: choose how many tokens before you roll. After the dice land, place each token on a die. A token adds 1 to a die, and a token on a die already showing its highest number makes it **explode** into another die of that type. Tap **DONE** to spend them, or **CANCEL ROLL** to spend nothing. A natural 1 or highest-number check looks at the roll before tokens.
 
 **The map.** If the QM has added a map, a **MAP** tab appears on the left edge of the encounter page. In the **Tokens** panel, **DROP ON MAP** puts your token on the grid. Drag it to move (it snaps to squares), or tap it and use the arrows. Tap any token to see whose it is.
@@ -108,6 +110,7 @@ Everything above, plus:
 - **ASSIGN TURN** picks any character that has rolled initiative. It never changes the round number.
 - **ADD EVENT** drops a named event into the turn order (for example "the ceiling collapses" at initiative 15). Events are hidden from players by default, and you can **SHOW TO PLAYERS**, **HIDE FROM PLAYERS** or **REMOVE** them. Tick **One Time** to have an event exist in one round only.
 - **GIVE EXPLODE TOKENS**: tick the players, pick 1 to 3.
+- **ROLL DAMAGE**: for traps, spells and anything outside a normal attack. Pick the target, type a formula such as `BP+3+1D6` or `2D8+4`, and (if it uses BP) whose BP to use. Tick **Ignore AC** or **Critical** if they apply. **ROLL** shows the dice and the result, then **APPLY** deals it. Changing anything after a roll clears it, so you must roll again.
 - **ADD MAP** attaches one of the campaign's maps to the current encounter.
 
 **NPCs**

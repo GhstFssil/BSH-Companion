@@ -700,9 +700,10 @@
           if (kept[c.id]) input.value = kept[c.id];
           const err = h('span', { class: 'lbl', role: 'alert' });
           const say = (m) => { err.textContent = m; };
+          const adv = advStepper();
           row.append(h('div', { class: 'enc-qm' },
-            h('span', { class: 'lbl', text: c.isNpc ? 'Roll for NPC' : 'No roll yet' }), etStepper(c),
-            h('button', { class: 'btn small', type: 'button', text: 'ROLL FOR THEM', onclick: () => saveInit(g, c, rollD20(), say) }),
+            h('span', { class: 'lbl', text: c.isNpc ? 'Roll for NPC' : 'No roll yet' }), etStepper(c), adv.el,
+            h('button', { class: 'btn small', type: 'button', text: 'ROLL FOR THEM', onclick: () => saveInit(g, c, adv.roll(20), say) }),
             input,
             h('button', { class: 'btn small', type: 'button', text: 'SET ROLL', onclick: () => saveInit(g, c, dieFrom(input.value), say) }),
             err));
@@ -723,7 +724,7 @@
           go('character-' + c.id);
         } catch (e) { setCampaignMsgs(e.message); }
       } }));
-      npcBar.append(spawnButton(g), giveEtButton(g));
+      npcBar.append(spawnButton(g), giveEtButton(g), h('button', { class: 'btn small', type: 'button', id: 'dmgBtn', text: 'ROLL DAMAGE', onclick: () => damageCard(g) }));
     }
   }
 
@@ -927,12 +928,66 @@
       h('button', { class: 'btn small', type: 'button', id: 'etGiveClose', text: 'CLOSE', onclick: () => { $('etModal').hidden = true; $('etBody').replaceChildren(); } }));
     $('etModal').hidden = false; $('etTitle').focus({ preventScroll: true });
   }
+  // QM damage roller: a formula like "BP+3+1D6" or "2D8+4" is rolled, AC comes off (unless ignored), a critical doubles it, and the QM applies it to the target
+  function damageCard(g) {
+    const rows = state.campChars.filter((r) => !r.stub);
+    const nm = (r) => (r.ch.info.name || 'Unnamed character') + (r.ch.isNpc ? ' (NPC)' : '');
+    const target = h('select', { id: 'dmgTarget', 'aria-label': 'Target' }, rows.map((r) => h('option', { value: r.ch.id, text: nm(r) })));
+    const bpFrom = h('select', { id: 'dmgBp', 'aria-label': 'Whose BP' }, [h('option', { value: '', text: '(no one)' })].concat(rows.map((r) => h('option', { value: r.ch.id, text: nm(r) }))));
+    const formula = h('input', { id: 'dmgFormula', type: 'text', maxlength: '60', placeholder: 'BP+3+1D6', autocomplete: 'off', 'aria-label': 'Damage formula' });
+    const noAc = h('input', { type: 'checkbox', id: 'dmgIgnoreAc', 'aria-label': 'Ignore AC' }), crit = h('input', { type: 'checkbox', id: 'dmgCrit', 'aria-label': 'Critical: double the damage after AC' });
+    const out = h('p', { class: 'skill-out', id: 'dmgOut', role: 'status' });
+    let pending = null;   // { id, dmg } waiting to be applied
+    const apply = h('button', { class: 'btn', type: 'button', id: 'dmgApply', text: 'APPLY', disabled: true, onclick: async () => {
+      if (!pending) return;
+      apply.disabled = true;
+      const tr = state.campChars.find((r) => r.ch.id === pending.id);
+      try {
+        if (pending.dmg > 0) await backend.qmDealDamage(g.id, pending.id, pending.dmg);
+        if (tr && pending.dmg > 0) { tr.ch.vitals = tr.ch.vitals || {}; tr.ch.vitals.damage = r2((Number(tr.ch.vitals.damage) || 0) + pending.dmg); }
+        out.textContent = pending.line + (pending.dmg > 0 ? ' Applied. ' : ' Nothing to apply. ') + pending.hp;
+        pending = null;
+        try { renderCampaignPage(); } catch (e) { /* page not open */ }
+      } catch (e) { out.textContent = e.message; apply.disabled = false; }
+    } });
+    const stale = () => { pending = null; apply.disabled = true; };
+    [target, bpFrom, formula, noAc, crit].forEach((el) => { el.addEventListener('input', stale); el.addEventListener('change', stale); });
+    const roll = h('button', { class: 'btn', type: 'button', id: 'dmgRoll', text: 'ROLL', onclick: () => {
+      stale();
+      const tr = state.campChars.find((r) => r.ch.id === target.value), pp = parsePower(formula.value);
+      if (!tr) { out.textContent = 'Pick a target.'; return; }
+      if (!pp) { out.textContent = 'Use numbers, dice like 2D6, and BP, joined with + or -. Example: BP+3+1D6.'; return; }
+      const src = bpFrom.value && state.campChars.find((r) => r.ch.id === bpFrom.value);
+      if (pp.terms.some((t) => t.k === 'bp') && !src) { out.textContent = 'The formula uses BP. Pick whose BP to use.'; return; }
+      const dice = pp.sides.map((sd) => rollDie(sd));
+      const pw = powerFrom(pp, src ? BSH.compute(src.ch).stat : [], dice);
+      const tres = BSH.compute(tr.ch), ac = noAc.checked ? 0 : tres.stat[BSH.STATS.findIndex((x) => x.key === 'AC')];
+      const dmg = BSH.COMBAT.damage(pw.total, ac, crit.checked), before = tres.hpRemaining;
+      const line = (dice.length ? 'Dice ' + dice.join(', ') + '. ' : '') + 'Damage ' + pw.text + ' = ' + fmt(pw.total) + (noAc.checked ? ', AC ignored' : ', minus AC ' + fmt(ac)) + ' = ' + fmt(BSH.COMBAT.damage(pw.total, ac, false))
+        + (crit.checked ? ', doubled = ' + fmt(dmg) : '') + ' damage.';
+      const hp = nm(tr) + ' HP ' + fmt(before) + ' to ' + fmt(before - dmg) + '.';
+      pending = { id: tr.ch.id, dmg, line, hp };
+      out.textContent = line + ' ' + hp + ' Tap APPLY to deal it.'; apply.disabled = false;
+    } });
+    $('etTitle').textContent = 'Roll Damage';
+    $('etBody').replaceChildren(
+      h('p', { class: 'note', text: 'Roll damage for a trap, a spell or anything outside a normal attack. Roll first, check the result, then apply it. Damage is attack power minus AC, never below 0.' }),
+      h('label', { class: 'fld' }, h('span', { class: 'lbl', text: 'Target' }), target),
+      h('label', { class: 'fld' }, h('span', { class: 'lbl', text: 'Formula (numbers, dice, BP)' }), formula),
+      h('label', { class: 'fld' }, h('span', { class: 'lbl', text: 'BP comes from' }), bpFrom),
+      h('label', { class: 'fld inline' }, noAc, h('span', { text: 'Ignore AC' })),
+      h('label', { class: 'fld inline' }, crit, h('span', { text: 'Critical (double after AC)' })),
+      roll, apply, out,
+      h('button', { class: 'btn small', type: 'button', id: 'dmgClose', text: 'CLOSE', onclick: () => { $('etModal').hidden = true; $('etBody').replaceChildren(); } }));
+    $('etModal').hidden = false; $('etTitle').focus({ preventScroll: true });
+  }
   function giveEtButton(g) {
     return h('button', { class: 'btn small', type: 'button', id: 'giveEtBtn', text: 'GIVE EXPLODE TOKENS', onclick: () => giveEtCard(g) });
   }
 
   /* ----- skill check popup ----- */
   let skillChar = null;
+  const skillAdv = advStepper();
   function skillRes() { return BSH.compute(skillChar); }
   function skillSync() {
     const i = +$('skillSel').value, m = skillRes().skillMod[i];
@@ -940,13 +995,14 @@
     $('skillOut').textContent = ''; $('skillMsg').textContent = '';
   }
   async function skillRoll(die) {
+    const advNote = skillAdv.take();
     if (die == null) { $('skillMsg').textContent = 'Enter the number on your d20 (1 to 20).'; return; }
     const ch = skillChar, i = +$('skillSel').value, m = skillRes().skillMod[i];
     const r = await etRoll({ ch, title: BSH.SKILLS[i].name + ' check', sides: [20], typed: [die], labels: ['d20'], defensive: true });
     if (!r || skillChar !== ch) return;
     const g = r.groups[0], adj = g.natural === 1 ? -5 : g.natural === 20 ? 5 : 0, total = m + adj + g.total;
     $('skillMsg').textContent = '';
-    $('skillOut').textContent = BSH.SKILLS[i].name + ': ' + g.text + (m < 0 ? ' - ' : ' + ') + fmt(Math.abs(m)) + (adj ? (adj < 0 ? ' - 5' : ' + 5') : '') + ' = ' + fmt(total);
+    $('skillOut').textContent = BSH.SKILLS[i].name + (advNote ? ' (' + advNote + ')' : '') + ': ' + g.text + (m < 0 ? ' - ' : ' + ') + fmt(Math.abs(m)) + (adj ? (adj < 0 ? ' - 5' : ' + 5') : '') + ' = ' + fmt(total);
   }
   function openSkillCheck(c) {
     skillChar = c;
@@ -954,14 +1010,15 @@
     const mods = skillRes().skillMod;
     $('skillSel').replaceChildren(...BSH.SKILLS.map((s, i) => h('option', { value: String(i), text: s.name + '  ' + signed(mods[i]) })));
     $('skillDie').value = '';
-    $('skillEt').replaceChildren(etStepper(c));
+    skillAdv.reset();
+    $('skillEt').replaceChildren(etStepper(c), skillAdv.el);
     skillSync();
     $('skillModal').hidden = false;
     $('skillTitle').focus({ preventScroll: true });
   }
   function closeSkillCheck() { $('skillModal').hidden = true; skillChar = null; }
   $('skillSel').addEventListener('change', skillSync);
-  $('skillRoll').addEventListener('click', () => skillRoll(rollD20()));
+  $('skillRoll').addEventListener('click', () => skillRoll(skillAdv.roll(20)));
   $('skillSet').addEventListener('click', () => skillRoll(dieFrom($('skillDie').value)));
   $('skillClose').addEventListener('click', closeSkillCheck);
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('skillModal').hidden) closeSkillCheck(); });
@@ -1011,6 +1068,24 @@
     if (window.crypto && window.crypto.getRandomValues) { do { window.crypto.getRandomValues(a); } while (a[0] >= lim); return (a[0] % sides) + 1; }
     return 1 + Math.floor(Math.random() * sides);
   };
+  // ADV/DIS stepper next to a ROLL button. Each tap adds one advantage (ADV) or one disadvantage (DIS); they cancel.
+  // roll(sides) rolls the extra dice for the ROLL button; the stepper resets afterwards. take() returns (and clears) the note about the last roll.
+  function advStepper() {
+    let net = 0, last = '';
+    const lab = h('span', { class: 'advlab', role: 'status' }), note = h('span', { class: 'advnote' });
+    const sync = () => { lab.textContent = BSH.ADV.label(net); lab.classList.toggle('on', net !== 0); };
+    const bump = (d) => { net = BSH.ADV.clamp(net + d); last = ''; note.textContent = ''; sync(); };
+    const el = h('div', { class: 'advbox' },
+      h('button', { class: 'btn small', type: 'button', text: 'DIS', 'aria-label': 'Add a disadvantage to the next roll', onclick: () => bump(-1) }), lab,
+      h('button', { class: 'btn small', type: 'button', text: 'ADV', 'aria-label': 'Add an advantage to the next roll', onclick: () => bump(1) }), note);
+    sync();
+    return {
+      el,
+      roll(sides) { const r = BSH.ADV.roll(net, sides, rollDie); last = r.text; note.textContent = r.text; net = 0; sync(); return r.die; },
+      take() { const t = last; last = ''; return t; },
+      reset() { net = 0; last = ''; note.textContent = ''; sync(); }
+    };
+  }
   let actionBack = null;   // what BACK does on the card that is open
   function showActionCard(title, nodes, back) {
     $('actionName').textContent = title;
@@ -1283,14 +1358,16 @@
     ];
     if (can) {
       const die = h('input', { type: 'number', inputmode: 'numeric', min: '1', max: '12', step: '1', placeholder: 'd12', 'aria-label': 'Your d12' });
+      const advB = advStepper();
       const blk = async (n) => {
+        const advNote = advB.take();
         if (!(n >= 1 && n <= 12) || Math.floor(n) !== n) { out.textContent = 'Enter the number on your d12 (1 to 12).'; return; }
         const rr = await etRoll({ ch: tc, title: 'Block / Parry', sides: [12], typed: [n], labels: ['Block d12'] });
         if (!rr) return;
         const gb = rr.groups[0], inc = gb.total + cr;
-        finish(' + block (' + gb.text + ' + CR ' + fmt(cr) + ' = ' + fmt(inc) + ', spent 1 AP) = DA ' + fmt(da + inc), da + inc);
+        finish(' + block (' + (advNote ? advNote + '; ' : '') + gb.text + ' + CR ' + fmt(cr) + ' = ' + fmt(inc) + ', spent 1 AP) = DA ' + fmt(da + inc), da + inc);
       };
-      nodes.push(etStepper(tc), h('button', { class: 'btn small', type: 'button', text: 'BLOCK / PARRY (ROLL D12)', onclick: () => { const n = rollDie(12); die.value = n; blk(n); } }), die,
+      nodes.push(etStepper(tc), advB.el, h('button', { class: 'btn small', type: 'button', text: 'BLOCK / PARRY (ROLL D12)', onclick: () => { const n = advB.roll(12); die.value = n; blk(n); } }), die,
         h('button', { class: 'btn small', type: 'button', text: 'BLOCK WITH MY ROLL', onclick: () => blk(die.value === '' ? NaN : Number(die.value)) }));
     }
     nodes.push(h('button', { class: 'btn', type: 'button', text: 'TAKE IT', onclick: () => finish('', da) }), out);
@@ -1312,8 +1389,10 @@
     const comboRow = myCombos.length ? h('label', { class: 'dline' }, comboBox, ' Combo Attack with ' + (((state.campChars.find((r) => r.ch.id === myCombos[0].leader) || {}).ch || {}).info || {}).name
       + ' (' + myCombos[0].skill + (myCombos[0].level ? ' CL ' + myCombos[0].level : ', no level') + '). The Leader rolls next.') : null;
     let busy = false;
+    const adv = advStepper();
     async function go(n) {
       if (busy) return;
+      const advNote = adv.take();
       if (!(n >= 1 && n <= 12) || Math.floor(n) !== n) { out.textContent = 'Enter the number on your d12 (1 to 12).'; return; }
       const tr = state.campChars.find((r) => r.ch.id === sel.value), mc = actionCh();
       if (!tr || !actionEncounter()) { out.textContent = 'Pick a target.'; return; }
@@ -1329,7 +1408,7 @@
           labels: ['Attack d12'].concat(pp ? pp.sides.map((sd) => 'Damage d' + sd) : []) });
         if (!rr) return;
         const ga = rr.groups[0], nat = ga.natural, adj = nat === 1 ? -5 : nat === 12 ? 5 : 0, total = r2(sa + adj + ga.total);
-        const mine = ga.text + (adj ? (adj < 0 ? ' - 5' : ' + 5') : '') + ' + SA ' + fmt(sa) + ' = ' + fmt(total);
+        const mine = (advNote ? '(' + advNote + ') ' : '') + ga.text + (adj ? (adj < 0 ? ' - 5' : ' + 5') : '') + ' + SA ' + fmt(sa) + ' = ' + fmt(total);
         const line = mine + ' vs ' + tn + "'s DA " + fmt(da) + ': ';
         const pw = pp ? powerFrom(pp, st, rr.groups.slice(1).map((x) => x.total)) : null;
         const combo = comboBox.checked && myCombos[0] ? myCombos[0] : null;
@@ -1356,9 +1435,9 @@
         try { renderCampaignPage(); } catch (e) { /* page not open */ }
       } catch (e) { out.textContent = e.message; } finally { busy = false; }
     }
-    const rollBtn = h('button', { class: 'btn small', type: 'button', text: 'ROLL D12', onclick: () => { const n = rollDie(12); die.value = n; go(n); } });
+    const rollBtn = h('button', { class: 'btn small', type: 'button', text: 'ROLL D12', onclick: () => { const n = adv.roll(12); die.value = n; go(n); } });
     const goBtn = h('button', { class: 'btn small', type: 'button', text: 'ATTACK WITH MY ROLL', onclick: () => go(die.value === '' ? NaN : Number(die.value)) });
-    showActionCard(a.name, [h('span', { class: 'dline', text: 'Target' }), sel, hint, comboRow, etStepper(me), rollBtn, die, goBtn, out].filter(Boolean), renderAndBack);
+    showActionCard(a.name, [h('span', { class: 'dline', text: 'Target' }), sel, hint, comboRow, etStepper(me), adv.el, rollBtn, die, goBtn, out].filter(Boolean), renderAndBack);
   }
   // ----- Combo Attacks -----
   // The Leader declares a Finisher, picks a skill and rolls the Combo Check (d20 + that skill's modifier, ET allowed); that costs 3 AP.
@@ -1374,8 +1453,10 @@
     const dreamBox = dream ? h('input', { type: 'checkbox', id: 'comboDream', 'aria-label': 'Spend 1 Explode Token to cut the cost by 1' }) : null;
     const existing = (g.encounter.combos || {})[me.id];
     let busy = false;
+    const adv = advStepper();
     async function go(n) {
       if (busy) return;
+      const advNote = adv.take();
       if (!(n >= 1 && n <= 20) || Math.floor(n) !== n) { out.textContent = 'Enter the number on your d20 (1 to 20).'; return; }
       const mc = actionCh(), f = others.find((r) => r.ch.id === fin.value);
       if (!f || !actionEncounter()) { out.textContent = 'Pick a Finisher.'; return; }
@@ -1391,7 +1472,7 @@
         if (!rr) return;
         const g0 = rr.groups[0], adj = g0.natural === 1 ? -5 : g0.natural === 20 ? 5 : 0, total = r2(mod + adj + g0.total), level = BSH.COMBO.level(total);
         const fname = f.ch.info.name || 'Unnamed character';
-        const text = skill.value + ': ' + g0.text + (mod < 0 ? ' - ' : ' + ') + fmt(Math.abs(mod)) + (adj ? (adj < 0 ? ' - 5' : ' + 5') : '') + ' = ' + fmt(total);
+        const text = skill.value + (advNote ? ' (' + advNote + ')' : '') + ': ' + g0.text + (mod < 0 ? ' - ' : ' + ') + fmt(Math.abs(mod)) + (adj ? (adj < 0 ? ' - 5' : ' + 5') : '') + ' = ' + fmt(total);
         await backend.setCombo(mc.id, f.ch.id, skill.value, level, total, text);
         if (wantDream) await etSave(mc, etHeld(mc) - 1);
         await performAction({ name: 'Combo Attack', cost: fmt(cost) + ' AP' });
@@ -1400,7 +1481,7 @@
         try { renderCampaignPage(); } catch (e) { /* page not open */ }
       } catch (e) { out.textContent = e.message; } finally { busy = false; }
     }
-    const rollBtn = h('button', { class: 'btn small', type: 'button', text: 'ROLL D20', onclick: () => { const n = rollD20(); die.value = n; go(n); } });
+    const rollBtn = h('button', { class: 'btn small', type: 'button', text: 'ROLL D20', onclick: () => { const n = adv.roll(20); die.value = n; go(n); } });
     const goBtn = h('button', { class: 'btn small', type: 'button', text: 'ROLL WITH MY D20', onclick: () => go(die.value === '' ? NaN : Number(die.value)) });
     showActionCard(a.name, [
       h('span', { class: 'dline', text: others.length ? 'Finisher' : 'No one else is in this encounter yet.' }), others.length ? fin : null,
@@ -1444,8 +1525,10 @@
     const sel = h('select', { id: 'comboWeapon', 'aria-label': 'Your attack' }, opts.map((o, i) => h('option', { value: String(i), text: o.name + (o.cost ? ' (' + o.cost + ')' : '') })));
     const die = h('input', { id: 'comboLDie', type: 'number', inputmode: 'numeric', min: '1', max: '12', step: '1', placeholder: 'd12', 'aria-label': 'Your d12' });
     let busy = false;
+    const adv = advStepper();
     async function go(n) {
       if (busy) return;
+      const advNote = adv.take();
       if (!(n >= 1 && n <= 12) || Math.floor(n) !== n) { out.textContent = 'Enter the number on your d12 (1 to 12).'; return; }
       const a = opts[+sel.value], pp = parsePower(a.power), res = BSH.compute(lc), m = /^(\d+(?:\.\d+)?)\s*AP$/.exec(a.cost || ''), cost = m ? Number(m[1]) : 0;
       if (!pp) { out.textContent = a.name + "'s Attack Dmg is not a formula the app can work out. Pick another attack."; return; }
@@ -1456,7 +1539,7 @@
         if (!rr) return;
         const ga = rr.groups[0], adj = ga.natural === 1 ? -5 : ga.natural === 12 ? 5 : 0, sa = res.stat[SA_IX()], total = r2(sa + adj + ga.total);
         const pw = powerFrom(pp, res.stat, rr.groups.slice(1).map((x) => x.total));
-        const text = 'Leader ' + (lc.info.name || '') + ': ' + ga.text + (adj ? (adj < 0 ? ' - 5' : ' + 5') : '') + ' + SA ' + fmt(sa) + ' = ' + fmt(total);
+        const text = 'Leader ' + (lc.info.name || '') + (advNote ? ' (' + advNote + ')' : '') + ': ' + ga.text + (adj ? (adj < 0 ? ' - 5' : ' + 5') : '') + ' + SA ' + fmt(sa) + ' = ' + fmt(total);
         if (cost) { const ap = r2(vitalNow(lc, res, 'AP') - cost); await backend.setVital(lc.id, 'apRemaining', ap); lc.vitals = Object.assign({}, lc.vitals, { apRemaining: ap }); }
         await backend.comboLeaderAttack(g.id, at.id, total, pw.total, text);
         closeComboLeader();
@@ -1466,8 +1549,8 @@
     $('comboTitle').textContent = (lc.info.name || 'Your character') + ': roll your half of the combo';
     $('comboBody').replaceChildren(
       h('p', { class: 'enc-sub', text: fname + ' has started the Combo Attack (' + at.combo.skill + (at.combo.level ? ' CL ' + at.combo.level : '') + ') on ' + tname + '. Pick your attack and roll.' }),
-      sel, etStepper(lc),
-      h('button', { class: 'btn small', type: 'button', text: 'ROLL D12', onclick: () => { const n = rollDie(12); die.value = n; go(n); } }), die,
+      sel, etStepper(lc), adv.el,
+      h('button', { class: 'btn small', type: 'button', text: 'ROLL D12', onclick: () => { const n = adv.roll(12); die.value = n; go(n); } }), die,
       h('button', { class: 'btn small', type: 'button', text: 'ATTACK WITH MY ROLL', onclick: () => go(die.value === '' ? NaN : Number(die.value)) }),
       h('button', { class: 'btn small', type: 'button', text: 'CALL OFF THE COMBO ATTACK', onclick: async () => {
         try { await backend.cancelComboAttack(g.id, at.id); closeComboLeader(); try { renderCampaignPage(); } catch (e) { /* page not open */ } } catch (e) { out.textContent = e.message; } } }),
@@ -1562,14 +1645,6 @@
   const ENC_WAIT_MS = 10000;                       // the QM can step in for a player after this long
   const ibOf = (c) => Math.round(BSH.compute(c).stat[3] * 100) / 100;
   const myPcs = (g) => state.chars.filter((c) => c.campaignId === g.id && !c.isNpc);
-  function rollD20() {
-    if (window.crypto && window.crypto.getRandomValues) {
-      const a = new Uint32Array(1);
-      do { window.crypto.getRandomValues(a); } while (a[0] >= 4294967280);   // 4294967280 = 20 * 214748364: no modulo bias
-      return (a[0] % 20) + 1;
-    }
-    return 1 + Math.floor(Math.random() * 20);
-  }
   function initText(i) {
     return 'd20 ' + i.die + (i.ib < 0 ? ' - ' : ' + ') + 'IB ' + fmt(Math.abs(i.ib)) +
       (i.die === 1 ? ' - 5' : i.die === 20 ? ' + 5' : '') + ' = ' + fmt(i.total);
@@ -1609,8 +1684,9 @@
         row.append(h('p', { class: 'enc-done', text: 'Initiative ' + fmt(done.total) + '  (' + initText(done) + ')' + (done.by === 'qm' ? ' - set by the QM' : '') }));
       } else {
         const input = h('input', { type: 'number', inputmode: 'numeric', min: '1', max: '20', placeholder: 'd20', 'aria-label': 'Your d20 roll for ' + (c.info.name || 'this character') });
-        row.append(etStepper(c), h('div', { class: 'enc-ctl' },
-          h('button', { class: 'btn small', type: 'button', text: 'ROLL D20', onclick: () => saveInit(g, c, rollD20(), (m) => { $('encMsg').textContent = m; }) }),
+        const adv = advStepper();
+        row.append(etStepper(c), adv.el, h('div', { class: 'enc-ctl' },
+          h('button', { class: 'btn small', type: 'button', text: 'ROLL D20', onclick: () => saveInit(g, c, adv.roll(20), (m) => { $('encMsg').textContent = m; }) }),
           h('span', { class: 'lbl', text: 'or' }), input,
           h('button', { class: 'btn small', type: 'button', text: 'SET ROLL', onclick: () => saveInit(g, c, dieFrom(input.value), (m) => { $('encMsg').textContent = m; }) })));
       }

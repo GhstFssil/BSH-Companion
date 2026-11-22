@@ -790,6 +790,27 @@ $$;
 revoke execute on function public.deal_damage(uuid, uuid, numeric) from public, anon;
 grant execute on function public.deal_damage(uuid, uuid, numeric) to authenticated;
 
+-- A QM applies damage they rolled by hand (traps, spells, anything outside a normal attack) to any character in their campaign, in or out of an encounter.
+create or replace function public.qm_deal_damage(p_campaign uuid, p_target uuid, p_amount numeric)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+declare
+  t record;
+begin
+  if auth.uid() is null or not public.is_campaign_qm(p_campaign) then raise exception 'Only a QM can do that.'; end if;
+  if p_amount is null or p_amount < 0 or p_amount > 100000 then raise exception 'That number is not valid.'; end if;
+  select campaign_id into t from public.characters where id = p_target;
+  if not found or t.campaign_id is distinct from p_campaign then raise exception 'That character is not in this campaign.'; end if;
+  update public.characters
+     set data = jsonb_set(coalesce(data, '{}'::jsonb), '{vitals}',
+           coalesce(data->'vitals', '{}'::jsonb) || jsonb_build_object('damage', coalesce((data->'vitals'->>'damage')::numeric, 0) + p_amount))
+   where id = p_target;
+end;
+$$;
+revoke execute on function public.qm_deal_damage(uuid, uuid, numeric) from public, anon;
+grant execute on function public.qm_deal_damage(uuid, uuid, numeric) to authenticated;
+
 -- Blocking and parrying: an attack on a character who could block (AP and an equipped item with a CR) waits on the encounter
 -- until the target's owner (or a QM, who can skip the block) answers. start_attack records it; resolve_attack applies the damage (if any) and posts the
 -- outcome for the attacker to read. The app works out every number; these only store and apply them.

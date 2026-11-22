@@ -70,6 +70,18 @@ async function scenario(label, makeAs) {
   S.click(S.$('skillRoll')); await wait(30);
   const m2 = S.$('skillOut').textContent.match(/d20 (\d+).* = (-?[\d.]+)$/); const die = +m2[1];
   ok(die >= 1 && die <= 20 && +m2[2] === die + mod + (die === 1 ? -5 : die === 20 ? 5 : 0), P('auto roll: ' + S.$('skillOut').textContent));
+  { const adv = (t) => [...S.$('skillEt').querySelectorAll('.advbox button')].find((b) => b.textContent === t), lab = () => S.$('skillEt').querySelector('.advlab').textContent;
+    ok(lab() === 'NORMAL', P('ADV/DIS stepper starts at NORMAL'));
+    S.click(adv('ADV')); S.click(adv('ADV')); ok(lab() === 'GREAT ADVANTAGE', P('two ADV taps: ' + lab()));
+    S.click(adv('DIS')); ok(lab() === 'ADVANTAGE', P('a DIS cancels one ADV: ' + lab()));
+    S.click(S.$('skillRoll')); await wait(30);
+    ok(/advantage: rolled \d+, \d+, kept \d+\)/.test(S.$('skillOut').textContent), P('advantage rolls two dice and shows them: ' + S.$('skillOut').textContent));
+    const kept = +S.$('skillOut').textContent.match(/kept (\d+)/)[1], rolled = S.$('skillOut').textContent.match(/rolled (\d+), (\d+)/).slice(1).map(Number);
+    ok(kept === Math.max(...rolled) && lab() === 'NORMAL', P('keeps the better die and the stepper resets'));
+    for (let i = 0; i < 3; i++) S.click(adv('DIS'));
+    ok(/AUTO 1/.test(lab()), P('three DIS: ' + lab()));
+    S.click(S.$('skillRoll')); await wait(30);
+    ok(/counts as 1/.test(S.$('skillOut').textContent) && /d20 1/.test(S.$('skillOut').textContent), P('beyond severe disadvantage counts as a 1: ' + S.$('skillOut').textContent)); }
   S.setv(S.$('skillSel'), '0'); S.$('skillSel').dispatchEvent(new S.w.Event('change', { bubbles: true }));
   ok(S.$('skillOut').textContent === '', P('changing the skill clears the result'));
   S.click(S.$('skillClose')); ok(S.$('skillModal').hidden, P('CLOSE closes the popup'));

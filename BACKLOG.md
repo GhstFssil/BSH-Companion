@@ -10,12 +10,10 @@ _none logged yet_
 
 ## Ideas
 - [ ] Bleed/Wound tokens and rest cooldowns (deferred by Ricky).
-- [ ] Advantage and disadvantage on rolls. Stacks up to 3.
 - [ ] Ability to create mobs and boss monsters. Apply settings similar to character sheet and a variation rate, then QM can generate them into the campaign.
 - [ ] Notes tab alongside rules and user guide. Can create different pages (recommended for different campaigns).
 - [ ] Characters sidebar for campaigns (two separate ones for Dead and Inactive).
 - [ ] Campaign codex that auto records mobs and items that have been discovered.
-- [ ] Manual damage application in campaigns with dice roll logic.
 - [ ] Compare character stats function.
 - [ ] Ability to add custom actions.
 

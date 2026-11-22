@@ -63,7 +63,7 @@ async function scenario(label, makeAs) {
   const sr = rowsOf(S);
   ok(sr.map((r) => r.name).join() === 'Alpha,Beta', P('Sam gets one row per own character, nothing else: ' + sr.map((r) => r.name)));
   ok(sr[0].ib === -2 && sr[1].ib === 2, P('each row shows that character\'s IB (' + sr.map((r) => r.ib) + ')'));
-  ok(sr[0].btns.join() === 'ROLL D20,SET ROLL' && !!sr[0].el.querySelector('input'), P('each row has ROLL D20, a die box and SET ROLL'));
+  ok(sr[0].btns.join() === 'DIS,ADV,ROLL D20,SET ROLL' && !!sr[0].el.querySelector('input'), P('each row has DIS/ADV, ROLL D20, a die box and SET ROLL'));
   ok(rowsOf(V).map((r) => r.name).join() === 'Gamma', P('Ava only gets Gamma'));
 
   // ---- player rolls ----

@@ -287,5 +287,23 @@
     }
   };
 
-  return { TALENTS, SKILLS, STATS, CLASSES, DEFAULT_TALENT, blankCharacter, compute, itemBuffs, round, ET, COMBAT, COMBO };
+  // ---- Advantage and Disadvantage (rulebook): net advantage 1 rolls two dice and keeps the best, net 2 rolls three; disadvantage keeps the worst.
+  // Advantage and disadvantage cancel. Beyond 2 either way you simply count as having rolled the highest (adv) or a 1 (dis).
+  const ADV = {
+    MAX: 3,
+    clamp(n) { n = Math.trunc(Number(n) || 0); return Math.max(-ADV.MAX, Math.min(ADV.MAX, n)); },
+    dice(net) { const a = Math.abs(ADV.clamp(net)); return a >= 3 ? 0 : a + 1; },   // 0 = nothing is rolled
+    label(net) { return ['SEVERE DISADV. (AUTO 1)', 'SEVERE DISADVANTAGE', 'DISADVANTAGE', 'NORMAL', 'ADVANTAGE', 'GREAT ADVANTAGE', 'GREAT ADV. (AUTO MAX)'][ADV.clamp(net) + 3]; },
+    // roll(net, sides, rollFn) -> { die, rolls, text }; rollFn(sides) returns one die
+    roll(net, sides, rollFn) {
+      const n = ADV.clamp(net);
+      if (n === 0) { const d = rollFn(sides); return { die: d, rolls: [d], text: '' }; }
+      if (Math.abs(n) >= 3) { const d = n > 0 ? sides : 1; return { die: d, rolls: [], text: (n > 0 ? 'great advantage' : 'severe disadvantage') + ': counts as ' + d }; }
+      const rolls = []; for (let i = 0; i < ADV.dice(n); i++) rolls.push(rollFn(sides));
+      const die = n > 0 ? Math.max.apply(null, rolls) : Math.min.apply(null, rolls);
+      return { die, rolls, text: (Math.abs(n) === 1 ? '' : (n > 0 ? 'great ' : 'severe ')) + (n > 0 ? 'advantage' : 'disadvantage') + ': rolled ' + rolls.join(', ') + ', kept ' + die };
+    }
+  };
+
+  return { TALENTS, SKILLS, STATS, CLASSES, DEFAULT_TALENT, blankCharacter, compute, itemBuffs, round, ET, COMBAT, COMBO, ADV };
 });

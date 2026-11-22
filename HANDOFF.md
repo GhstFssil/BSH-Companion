@@ -14,8 +14,8 @@ BLOODSOUP HELL Companion: one PWA for Ricky's homemade tabletop RPG, with Supaba
 - Tests at the last full run (2026-11-20): every file passed, including new `guideui.js`.
 
 ## In progress
-- On `next` (unpublished, tests pass; **database changed**, so `campaigns.sql` must be re-run when this ships): item/ability names and descriptions now wrap and grow (no cut-off text); NEW NPC button on the Characters page for QMs (campaign picker when QM of several); Tracking's Next Hit Critical is automated for both attackers (`vitals.nextCrit`; `resolve_attack` gained `p_used_crit`, `p_next_crit`; cleared by `end_encounter`; roster tag NEXT HIT CRIT). Test selectors for the item name changed to `.iline .wrapname`.
-- Batch plan: 1 quick wins (done), 2 combat rules (advantage/disadvantage, manual damage), 3 campaign/UI, 4 bigger features. New Tracks section in BACKLOG.md: mechanics for all abilities.
+- On `next` (unpublished, tests pass; **database changed**, so `campaigns.sql` must be re-run when this ships): item/ability names and descriptions now wrap and grow (no cut-off text); NEW NPC button on the Characters page for QMs (campaign picker when QM of several); Tracking's Next Hit Critical is automated for both attackers (`vitals.nextCrit`; `resolve_attack` gained `p_used_crit`, `p_next_crit`; cleared by `end_encounter`; roster tag NEXT HIT CRIT); Batch 2 done: ADV/DIS stepper on skill, initiative, attack, combo, Leader and block rolls (`BSH.ADV`, rulebook wording now d12 for attacks); QM ROLL DAMAGE card (new RPC `qm_deal_damage`); USER_GUIDE updated and `guide.js` rebuilt. Test selectors for the item name changed to `.iline .wrapname`.
+- Batch plan: 1 quick wins (done), 2 combat rules (done), 3 campaign/UI (next: Dead/Inactive sidebar, compare stats, notes tab), 4 bigger features. New Tracks section in BACKLOG.md: mechanics for all abilities.
 -  `main` is version 1 (guide); the last build Ricky deployed is 0.6 rev2 until he uploads the new zip.
 
 ## Decisions

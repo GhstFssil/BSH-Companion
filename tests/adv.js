@@ -1,0 +1,17 @@
+const B = require('../engine.js');
+let n = 0, bad = 0; const ok = (c, m) => { n++; if (!c) { bad++; console.log('FAIL', m); } };
+const A = B.ADV, seq = (...v) => { const q = v.slice(); return () => q.shift(); };
+ok(A.dice(0) === 1 && A.dice(1) === 2 && A.dice(-1) === 2 && A.dice(2) === 3 && A.dice(-2) === 3 && A.dice(3) === 0 && A.dice(-9) === 0, 'dice count by net advantage');
+ok(A.clamp(7) === 3 && A.clamp(-7) === -3 && A.clamp('x') === 0 && A.clamp(1.9) === 1, 'net advantage is clamped to +-3 and cleaned');
+let r = A.roll(0, 12, seq(7));
+ok(r.die === 7 && r.rolls.length === 1 && r.text === '', 'normal: one die, no note');
+r = A.roll(1, 12, seq(3, 9)); ok(r.die === 9 && r.rolls.join() === '3,9' && /advantage/.test(r.text), 'advantage keeps the better of two');
+r = A.roll(-1, 20, seq(14, 6)); ok(r.die === 6 && /disadvantage/.test(r.text), 'disadvantage keeps the worse of two');
+r = A.roll(2, 20, seq(4, 17, 9)); ok(r.die === 17 && r.rolls.length === 3 && /great advantage/.test(r.text), 'great advantage: best of three');
+r = A.roll(-2, 12, seq(4, 11, 9)); ok(r.die === 4 && /severe disadvantage/.test(r.text), 'severe disadvantage: worst of three');
+let called = 0; const spy = () => { called++; return 5; };
+r = A.roll(3, 12, spy); ok(r.die === 12 && called === 0, 'beyond great advantage counts as a max roll, nothing rolled');
+r = A.roll(-3, 20, spy); ok(r.die === 1 && called === 0, 'beyond severe disadvantage counts as a 1');
+ok(A.roll(5, 20, spy).die === 20, 'anything past +3 is clamped');
+ok(A.label(0) === 'NORMAL' && A.label(1) === 'ADVANTAGE' && A.label(-2) === 'SEVERE DISADVANTAGE' && /AUTO MAX/.test(A.label(3)), 'labels');
+console.log(bad ? bad + ' FAILED of ' + n : 'ALL ' + n + ' PASSED');

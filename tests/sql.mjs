@@ -279,6 +279,12 @@ ok(!(await as('ricky', `select resolve_attack($1,$2,5,'no block')`, [C, sb2.rows
 ok((await enc('sam')).lastAttack.text === 'no block' && !(await enc('sam')).attack, 'and it is posted and cleared');
 ok(err(await as('ava', `select start_attack($1,$2,1,1,'x')`, [pcSam, pcAva]), /your own characters/), "cannot start an attack with someone else's character");
 ok((await as('ricky', `select end_encounter($1)`, [C])).error === undefined, 'block: end');
+// QM damage (manual): QM only, any character in the campaign, no encounter needed
+{ const d0 = await dmgOf(pcAva);
+  ok(err(await as('sam', `select qm_deal_damage($1,$2,3)`, [C, pcAva]), /Only a QM/), 'qm damage: a player cannot');
+  ok(err(await as('ricky', `select qm_deal_damage($1,$2,-1)`, [C, pcAva]), /not valid/), 'qm damage: negative refused');
+  ok(err(await as('ricky', `select qm_deal_damage($1,$2,3)`, [C, uuid()]), /not in this campaign/), 'qm damage: unknown target refused');
+  ok(!(await as('ricky', `select qm_deal_damage($1,$2,3.5)`, [C, pcAva])).error && (await dmgOf(pcAva)) === d0 + 3.5, 'qm damage: applies to a campaign character'); }
 // combo attacks and crits
 ok(!(await as('ricky', `select start_encounter($1)`, [C])).error, 'combo: new encounter');
 await si('sam', pcSam, 8); await si('ava', pcAva, 5);
