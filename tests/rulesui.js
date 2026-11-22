@@ -4,7 +4,7 @@ const { ok, done } = checker();
   const w = await boot({}); const A = api(w);
   const hit = []; w.Element.prototype.scrollIntoView = function () { hit.push(this.id); };
   await wait(100);
-  ok(A.$('appVersion').textContent === 'v1', 'title page shows version v1: ' + A.$('appVersion').textContent);
+  ok(A.$('appVersion').textContent === 'v2', 'title page shows version v2: ' + A.$('appVersion').textContent);
   ok(!A.$('screen-start').hidden && !A.$('rulesBtn').hidden && A.$('rulesBtn').classList.contains('center'), 'RULES button (center top) is on the title page when logged out');
   A.click(A.$('rulesBtn')); await wait(50);
   ok(!A.$('screen-rules').hidden && A.vis().join() === 'rules', 'RULES opens the rulebook');

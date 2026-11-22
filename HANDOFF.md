@@ -13,7 +13,7 @@ BLOODSOUP HELL Companion: one PWA for Ricky's homemade tabletop RPG, with Supaba
   - Batch 4: Bleed/Wound Tokens (`BSH.TOKENS`; `set_vital` accepts `bt`/`wt`/`bleeding`; STATS tab, roster tags, BLEEDING button; auto WT on big hits, BT while Bleeding; rests remove BT; Respite/Short Rest cooldowns in `vitals.restCd`); custom actions (ABILITIES tab, Actions menu); MAKE MOBS (mob/boss copies of an NPC with variation and boost; no DB change); CODEX (`campaigns.codex`, `codex_record`, `codex_remove`, auto-recorded when players can see a mob/item). USER_GUIDE, README, ARCHITECTURE updated; `guide.js` rebuilt; new tests `bleed.js`, `batch4.js`.
 
 ## In progress
-- Nothing mid-flight. `next` is ready to publish when Ricky says so (merge `main` into `next`, bump version to 2 and cache `bloodsoup-v58`, push to `main`).
+- Nothing mid-flight. Version 2 was pushed to `main` on 2026-11-21; Ricky downloads the release and handles Netlify.
 
 ## Decisions
 - Design assumptions Ricky has not explicitly reviewed:
@@ -30,7 +30,7 @@ BLOODSOUP HELL Companion: one PWA for Ricky's homemade tabletop RPG, with Supaba
 2. See BACKLOG.md: Tracks (mechanics for all abilities) and the not-automated token details.
 
 ## Gotchas
-- Versions are whole numbers. Next non-docs push to `main` makes version 2 and cache `bloodsoup-v58`.
+- Versions are whole numbers. Version 2 (cache `bloodsoup-v58`) is published; the next non-docs push makes version 3 and cache `bloodsoup-v59`.
 - After editing `USER_GUIDE.md`, rebuild `guide.js` (`python3 tools/build_guide.py`). Write `&lt;x&gt;` for angle-bracket placeholders.
 - QM roster rows now have a BLEEDING button; tests that list roster buttons must include it.
 - Ricky still has to run `campaigns.sql` in Supabase and deploy the newest release; confirm if bugs get reported.
