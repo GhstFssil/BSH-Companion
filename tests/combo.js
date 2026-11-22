@@ -57,4 +57,12 @@ ok(r.L.hit && !r.F.hit && r.L.crit && r.damage === 10 && r.effects.sp === 8 && r
 // effects: battlewise AP
 r = K.resolve({ da: 10, ac: 0, skill: 'Battlewise', level: 25, L: { total: 12, power: 1 }, F: { total: 30, power: 1 } });
 ok(r.effects.ap === 4, 'battlewise CL25 = 4 AP');
+// a held Next Hit Critical makes that attacker's hit critical and is spent only on a hit
+r = K.resolve({ da: 10, ac: 0, skill: 'Athletics', level: 10, L: { total: 12, power: 5 }, F: { total: 5, power: 5 }, forceCrit: { L: true, F: true } });
+ok(r.L.hit && !r.F.hit && r.L.crit && r.used.L === true && r.used.F === false, 'forceCrit: spent on the attacker who hit, kept by the one who missed');
+ok(r.damage === 10, 'forceCrit: a single hit of power 5 is doubled: ' + r.damage);
+r = K.resolve({ da: 10, ac: 0, skill: 'Athletics', level: 10, L: { total: 12, power: 5 }, F: { total: 13, power: 5 }, forceCrit: { L: true, F: false } });
+ok(r.L.crit && !r.F.crit && !r.used.F, 'forceCrit on one attacker only: no double crit, so the combined hit is not doubled');
+r = K.resolve({ da: 10, ac: 0, skill: 'Tracking', level: 10, L: { total: 3, power: 5 }, F: { total: 4, power: 5 }, forceCrit: { L: true, F: true } });
+ok(r.kind === 'miss' && r.retry && !r.used, 'forceCrit: nothing is spent when both miss');
 console.log(bad ? bad + ' FAILED of ' + n : 'ALL ' + n + ' PASSED');

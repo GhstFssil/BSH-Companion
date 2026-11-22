@@ -26,6 +26,7 @@ Hosted on Netlify (https://verdant-stardust-605101.netlify.app). Ricky publishes
 ## Rules as implemented
 - Attack = d12 + SA (natural 1 gives -5, natural 12 gives +5). Hit if total > target DA. Damage = max(0, Attack Pwr - AC). No chip damage: a hit that AC absorbs is still a hit, with 0 damage.
 - Critical Hit: total - DA >= 10, damage after AC doubled. Critical Miss: total - DA <= -10, attacker recovers 2 less AP at next turn start (`vitals.apPenalty`).
+- Next Hit Critical: a Tracking Perfect Combo (or Critical Combo at CL 25) sets `vitals.nextCrit` on both attackers. Their next hit is critical (plain or combo) and spends the flag; a miss keeps it; `end_encounter` clears it. Applied by the target's device in `resolveAttackNow`, stored via `resolve_attack`'s `p_used_crit` / `p_next_crit`.
 - Block/Parry costs 1 AP and adds d12 + best equipped CR to DA. Explode Tokens (ET) via `BSH.ET`. AP resets to full at turn start.
 - Combo Attacks (3 AP): Leader picks Finisher + skill, rolls d20; Combo Level 0/10/15/20/25; held until the Leader's next turn begins; Finisher ticks it on a weapon attack; Leader rolls an attack; target defends against both. Engine: `BSH.COMBAT`, `BSH.COMBO`.
 

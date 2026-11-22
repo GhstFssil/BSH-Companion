@@ -167,6 +167,9 @@ function createMock() {
           const ch = db.characters.find((x) => x.id === id);
           if (ch && ch.campaign_id === g.id) ch.data = Object.assign({}, ch.data, { vitals: Object.assign({}, (ch.data || {}).vitals, { apPenalty: 2 }) });
         });
+        const ofAtk = (id) => id === at.attacker || !!(at.combo && id === at.combo.leader);
+        (body.p_used_crit || []).filter(ofAtk).forEach((id) => { const ch = db.characters.find((x) => x.id === id); if (ch && ch.campaign_id === g.id) { const v = Object.assign({}, (ch.data || {}).vitals); delete v.nextCrit; ch.data = Object.assign({}, ch.data, { vitals: v }); } });
+        (body.p_next_crit || []).filter(ofAtk).forEach((id) => { const ch = db.characters.find((x) => x.id === id); if (ch && ch.campaign_id === g.id) ch.data = Object.assign({}, ch.data, { vitals: Object.assign({}, (ch.data || {}).vitals, { nextCrit: true }) }); });
         if (body.p_damage > 0) { const v = (t.data || {}).vitals || {}; t.data = Object.assign({}, t.data, { vitals: Object.assign({}, v, { damage: (Number(v.damage) || 0) + body.p_damage }) }); }
         const e = Object.assign({}, g.encounter); delete e.attack; e.lastAttack = { id: at.id, attacker: at.attacker, target: at.target, text: String(body.p_text || '').slice(0, 500) };
         g.encounter = e; return send(204);
@@ -253,7 +256,7 @@ function createMock() {
           if (g.encounter.combos) { g.encounter.combos = Object.assign({}, g.encounter.combos); delete g.encounter.combos[body.p_character]; }
           g.encounter.turn = body.p_character; g.encounter.moved = true; g.encounter.seq = (g.encounter.seq || 0) + 1; return send(204);
         }
-        if (p.endsWith('end_encounter')) { if (!qm) return P('Only a QM can end an encounter.'); g.encounter = null; db.events = db.events.filter((e) => e.campaign_id !== g.id); db.tokens = db.tokens.filter((t) => t.campaign_id !== g.id); return send(204); }
+        if (p.endsWith('end_encounter')) { if (!qm) return P('Only a QM can end an encounter.'); g.encounter = null; db.characters.forEach((ch) => { if (ch.campaign_id === g.id && ((ch.data || {}).vitals || {}).nextCrit) { const v = Object.assign({}, ch.data.vitals); delete v.nextCrit; ch.data = Object.assign({}, ch.data, { vitals: v }); } }); db.events = db.events.filter((e) => e.campaign_id !== g.id); db.tokens = db.tokens.filter((t) => t.campaign_id !== g.id); return send(204); }
         if (!Number.isInteger(body.p_die) || body.p_die < 1 || body.p_die > 20) return P('The d20 roll must be between 1 and 20.');
         if (!g || !g.encounter) return P('There is no active encounter.');
         const c = db.characters.find((x) => x.id === body.p_character);

@@ -10,7 +10,6 @@ _none logged yet_
 
 ## Ideas
 - [ ] Bleed/Wound tokens and rest cooldowns (deferred by Ricky).
-- [ ] Automate Tracking's "next hit is critical" combo bonus (currently text only). Open question for Ricky: whose next hit (Finisher only, or both attackers)?
 - [ ] Advantage and disadvantage on rolls. Stacks up to 3.
 - [ ] Ability to create mobs and boss monsters. Apply settings similar to character sheet and a variation rate, then QM can generate them into the campaign.
 - [ ] Notes tab alongside rules and user guide. Can create different pages (recommended for different campaigns).

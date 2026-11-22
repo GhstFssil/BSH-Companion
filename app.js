@@ -678,6 +678,7 @@
         enc && !i && !c.isNpc ? h('span', { class: 'tag', text: 'WAITING' }) : null,
         c.isNpc ? h('span', { class: 'tag', text: c.npcVisible ? 'NPC · SHOWN' : 'NPC · HIDDEN' }) : null,
         c.isNpc && c.sheetHidden ? h('span', { class: 'tag', text: 'SHEET HIDDEN' }) : null,
+        c.vitals && c.vitals.nextCrit ? h('span', { class: 'tag', text: 'NEXT HIT CRIT' }) : null,
         r.mine && !c.isNpc ? h('span', { class: 'tag', text: 'YOURS' }) : null);
       if (c.isNpc && qm) {
         row.append(h('button', { class: 'btn small', type: 'button', text: c.npcVisible ? 'HIDE FROM PLAYERS' : 'SHOW TO PLAYERS',
@@ -1189,13 +1190,17 @@
     const tn = tc.info.name || 'Unnamed character', eff = daEff == null ? da : daEff, before = res.hpRemaining, C = BSH.COMBAT;
     const head = ' vs ' + tn + "'s DA " + fmt(da) + (blockText || '') + ': ';
     const hpLine = (d) => ' ' + tn + ' HP ' + fmt(before) + ' to ' + fmt(before - d) + '.';
-    let dmg = 0, txt = '', eff2 = {}; const critFail = [];
+    let dmg = 0, txt = '', eff2 = {}; const critFail = [], usedCrit = [], nextCrit = [];
+    const holds = (c) => !!(c && c.vitals && c.vitals.nextCrit);   // Next Hit Critical (from a Tracking Perfect Combo)
     if (!at.combo) {
-      const kind = C.classify(at.total, eff), plain = C.damage(at.power, ar, false);
+      const atkr = await campaignChar(g, at.attacker);
+      let kind = C.classify(at.total, eff);
+      if (holds(atkr) && (kind === 'hit' || kind === 'crit')) { kind = 'crit'; usedCrit.push(at.attacker); }
+      const plain = C.damage(at.power, ar, false);
       if (kind === 'crit' || kind === 'hit') {
         dmg = C.damage(at.power, ar, kind === 'crit');
         txt = at.text + head + (kind === 'crit' ? 'CRITICAL HIT. ' : 'HIT. ') + 'Attack Pwr ' + fmt(at.power) + ' minus AC ' + fmt(ar) + ' = ' + fmt(plain)
-          + (kind === 'crit' ? ', doubled = ' + fmt(dmg) : '') + ' damage.' + hpLine(dmg) + (kind === 'crit' ? " It has disadvantage on Skill Checks that are part of the attack's effect." : '');
+          + (kind === 'crit' ? ', doubled = ' + fmt(dmg) : '') + ' damage.' + (usedCrit.length ? ' (Next Hit Critical spent.)' : '') + hpLine(dmg) + (kind === 'crit' ? " It has disadvantage on Skill Checks that are part of the attack's effect." : '');
       } else if (kind === 'critfail') { critFail.push(at.attacker); txt = at.text + head + 'CRITICAL MISS. The attacker recovers 2 less AP at the start of their next turn.'; }
       else txt = at.text + head + 'MISS.';
     } else {
@@ -1203,22 +1208,27 @@
       const L0 = { total: Number(at.combo.lTotal), power: Number(at.combo.lPower) }, F0 = { total: Number(at.total), power: Number(at.power) };
       const name = at.combo.skill + (at.combo.level ? ' CL ' + at.combo.level : ' (no level)');
       let r = BSH.COMBO.resolve({ da: eff, ac: ar, skill: at.combo.skill, level: at.combo.level, L: L0, F: F0,
-        critMax: hasAb(lead, /^Critical Reave Theory$/i) ? 4 : 3, perfectMax: hasAb(lead, /^Perfectionist$/i) ? 1 : 0 });
+        critMax: hasAb(lead, /^Critical Reave Theory$/i) ? 4 : 3, perfectMax: hasAb(lead, /^Perfectionist$/i) ? 1 : 0, forceCrit: { L: holds(lead), F: holds(fin) } });
       let fTotal = F0.total, again = '';
       if (r.retry) {   // both missed: the Finisher rolls again and keeps the better roll; a hit that way is a normal attack
         const sa = fin ? BSH.compute(fin).stat[SA_IX()] : 0, d = rollDie(12), adj = d === 1 ? -5 : d === 12 ? 5 : 0, t2 = r2(sa + adj + d);
         again = ' Finisher rolls again: ' + d + (adj ? (adj < 0 ? ' - 5' : ' + 5') : '') + ' + SA ' + fmt(sa) + ' = ' + fmt(t2) + '.';
         if (t2 > fTotal) fTotal = t2;
-        const kind = C.classify(fTotal, eff);
+        let kind = C.classify(fTotal, eff);
+        if (holds(fin) && (kind === 'hit' || kind === 'crit')) { kind = 'crit'; usedCrit.push(at.attacker); }
         if (kind === 'crit' || kind === 'hit') { dmg = C.damage(F0.power, ar, kind === 'crit'); again += ' ' + (kind === 'crit' ? 'CRITICAL HIT' : 'HIT') + ' as a normal attack, ' + fmt(dmg) + ' damage.'; }
         txt = 'Combo Attack (' + name + ')' + head + 'both attacks missed.' + again + (dmg > 0 ? hpLine(dmg) : '');
       } else {
         dmg = r.damage; eff2 = r.effects;
+        if (r.used && r.used.L) usedCrit.push(at.combo.leader);
+        if (r.used && r.used.F) usedCrit.push(at.attacker);
+        if (r.bonus && r.bonus.crit) nextCrit.push(at.combo.leader, at.attacker);   // Tracking Perfect Combo: both attackers' next hit is critical
         const label = r.kind === 'perfect' ? 'PERFECT COMBO' : r.kind === 'critical' ? 'CRITICAL COMBO' : 'COMBO HIT';
         txt = 'Combo Attack (' + name + ')' + head + label + ' (rolls ' + fmt(L0.total) + ' and ' + fmt(F0.total) + ', ' + fmt(r.diff) + ' apart). '
           + (r.bonus ? (r.recv === 'both' ? 'Both gain: ' : 'Finisher gains: ') + r.bonus.t + ' ' : '')
           + (r.L.hit && r.F.hit ? 'Both hit' : r.L.hit ? 'Leader hit' : 'Finisher hit') + (r.L.crit || r.F.crit ? ' (a critical hit)' : '') + '. '
-          + fmt(dmg) + ' damage after AC ' + fmt(ar) + '.' + hpLine(dmg);
+          + fmt(dmg) + ' damage after AC ' + fmt(ar) + '.' + hpLine(dmg)
+          + (usedCrit.length ? ' Next Hit Critical spent.' : '') + (nextCrit.length ? " Both attackers' next hit is a critical hit." : '');
       }
       if (C.classify(L0.total, eff) === 'critfail') critFail.push(at.combo.leader);
       if (C.classify(F0.total, eff) === 'critfail') critFail.push(at.attacker);
@@ -1232,7 +1242,7 @@
     tc.vitals = tc.vitals || {};
     if (apNew !== ap) { await backend.setVital(tc.id, 'apRemaining', apNew); tc.vitals.apRemaining = apNew; }
     if (spNew !== sp) { await backend.setVital(tc.id, 'spRemaining', spNew); tc.vitals.spRemaining = spNew; }
-    await backend.resolveAttack(g.id, at.id, dmg, txt.slice(0, 500), critFail);
+    await backend.resolveAttack(g.id, at.id, dmg, txt.slice(0, 500), critFail, usedCrit, nextCrit);
     try { renderCampaignPage(); } catch (e) { /* page not open */ }
   }
 

@@ -297,11 +297,17 @@ ok(err(await as('ricky', `select resolve_attack($1,$2,5,'x')`, [C, caId]), /not 
 ok(err(await as('ava', `select combo_leader_attack($1,$2,9,6,'x')`, [C, caId]), /Leader/i), 'combo: only the Leader rolls');
 ok(!(await as('sam', `select combo_leader_attack($1,$2,9,6,'x')`, [C, caId])).error && (await enc('ava')).attack.combo.state === 'defend', 'combo: Leader roll moves it to defend');
 ok(err(await as('sam', `select combo_leader_attack($1,$2,9,6,'x')`, [C, caId]), /not waiting/), 'combo: Leader cannot roll twice');
-ok(!(await as('ricky', `select resolve_attack($1,$2,5,'COMBO',$3)`, [C, caId, [pcSam, pcAva]])).error, 'combo: resolves with critical-miss ids');
+ok(!(await as('ricky', `select resolve_attack($1,$2,5,'COMBO',$3,$4,$5)`, [C, caId, [pcSam, pcAva], [], [pcSam, pcAva, liveNpc.id]])).error, 'combo: resolves with critical-miss ids and Next Hit Critical grants');
+ok((await vit(pcSam)).nextCrit === true && (await vit(pcAva)).nextCrit === true, 'Tracking Perfect Combo: both attackers get nextCrit');
+ok(!(((await vit(liveNpc.id)) || {}).nextCrit), 'nextCrit cannot be granted to someone outside the attack');
 ok((await vit(pcSam)).apPenalty === 2 && (await vit(pcAva)).apPenalty === 2, 'crit miss: both get apPenalty 2');
 await as('ricky', `select assign_turn($1,$2)`, [C, pcSam]);
 await as('sam', `select start_turn($1,1,10,6)`, [pcSam]);
 { const v = await vit(pcSam); ok(v.apPenalty === undefined || v.apPenalty === null, 'start_turn consumes the penalty'); ok(Number(v.apRemaining) === 4, 'AP recovered is 2 less (6 - 2 = 4): ' + v.apRemaining); }
+// a spent Next Hit Critical flag is cleared (only for the attack's own attacker)
+{ const pa = await as('ava', `select start_attack($1,$2,5,5,'plain') id`, [pcAva, liveNpc.id]);
+  ok(!(await as('ricky', `select resolve_attack($1,$2,5,'x','{}',$3,'{}')`, [C, pa.rows[0].id, [pcAva, pcSam]])).error, 'plain attack resolves with a spent flag');
+  ok(!((await vit(pcAva)).nextCrit) && (await vit(pcSam)).nextCrit === true, 'spent flag cleared for the attacker only; the Leader of another attack keeps theirs'); }
 // expiry and cancel
 await setC('sam', pcSam, pcAva);
 await as('ricky', `select assign_turn($1,$2)`, [C, pcAva]);
@@ -320,6 +326,7 @@ ok(!!(await enc('sam')).combos?.[pcSam], 'combo with an NPC Finisher');
 await as('ricky', `select unlink_npc($1)`, [npcF]);
 ok(!(await enc('sam')).combos?.[pcSam], 'taking the Finisher out of the campaign ends the combo');
 ok((await as('ricky', `select end_encounter($1)`, [C])).error === undefined, 'combo: end');
+ok(!((await vit(pcSam)).nextCrit), 'ending the encounter clears Next Hit Critical flags');
 
 ok(err(await dd('sam', pcSam, pcAva, 1), /during an encounter/), 'no attacks outside an encounter');
 

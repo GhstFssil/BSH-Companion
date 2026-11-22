@@ -21,7 +21,7 @@
  *             saveMap(campaignId, {id?,name,image?,imgW,imgH,cols,rows,size,ox,oy}) -> id, setMapVisible(id, bool), deleteMap(id), listTokens(campaignId) -> [{characterId,col,row}], setToken(charId, col, row), removeToken(charId)  (tokens on the encounter map; owner or QM),
  *             setEncounterMap(campaignId, mapId|null)  (encounter.mapId: the map everyone can open during the encounter)
  *               (encounter maps: the picture is a data URL; players only get the maps the QM has shown)
- *             startAttack(attackerId, targetId, total, power, text, comboLeaderId?) -> attackId, resolveAttack(campaignId, attackId, damage, text, critFailIds?)   (an attack the target may block/parry; the target's player or a QM answers),
+ *             startAttack(attackerId, targetId, total, power, text, comboLeaderId?) -> attackId, resolveAttack(campaignId, attackId, damage, text, critFailIds?, usedCritIds?, nextCritIds?)   (an attack the target may block/parry; the target's player or a QM answers),
  *             setCombo(leaderId, finisherId, skill, level, total, text), cancelCombo(leaderId), comboLeaderAttack(campaignId, attackId, total, power, text),
  *             cancelComboAttack(campaignId, attackId)   (Combo Attacks: encounter.combos[leaderId] waits for the Finisher's turn; the attack then carries `combo`)
  *             setExplodeTokens(charId, 0..10)   (spend or hand out Explode Tokens; the owner, or a QM of the character's campaign),
@@ -454,8 +454,10 @@
       },
 
       // critFailIds: attackers who rolled a Critical Miss; they recover 2 less AP at the start of their next turn
-      async resolveAttack(campaignId, attackId, damage, text, critFailIds) {
-        const { error } = await sb.rpc('resolve_attack', { p_campaign: campaignId, p_attack: attackId, p_damage: damage, p_text: text || '', p_crit_fail: critFailIds || [] });
+      // usedCritIds: attackers whose Next Hit Critical flag was spent; nextCritIds: attackers who gain it (Tracking Perfect Combo)
+      async resolveAttack(campaignId, attackId, damage, text, critFailIds, usedCritIds, nextCritIds) {
+        const { error } = await sb.rpc('resolve_attack', { p_campaign: campaignId, p_attack: attackId, p_damage: damage, p_text: text || '', p_crit_fail: critFailIds || [],
+          p_used_crit: usedCritIds || [], p_next_crit: nextCritIds || [] });
         if (error) throw friendly(error, 'Could not answer the attack.');
       },
       async setCombo(leaderId, finisherId, skill, level, total, text) {
@@ -855,6 +857,11 @@
         if (!g || !isQmOf(g, uid)) throw fail('Only a QM can end an encounter.');
         g.encounter = null;
         wr(GR, campaigns);
+        Object.keys(rd(ACC, {})).forEach((email) => {   // Next Hit Critical flags end with the encounter
+          const list = rd(CH(email), []); let hit = false;
+          list.forEach((c) => { if (c.campaignId === campaignId && c.vitals && c.vitals.nextCrit) { const v = Object.assign({}, c.vitals); delete v.nextCrit; c.vitals = v; hit = true; } });
+          if (hit) wr(CH(email), list);
+        });
       },
 
       async setInitiative(campaignId, characterId, die, ib) {
@@ -992,7 +999,7 @@
         wr(GR, camps);
       },
 
-      async resolveAttack(campaignId, attackId, damage, text, critFailIds) {
+      async resolveAttack(campaignId, attackId, damage, text, critFailIds, usedCritIds, nextCritIds) {
         if (typeof damage !== 'number' || !isFinite(damage) || damage < 0 || damage > 100000) throw fail('That number is not valid.');
         const camps = rd(GR, []), g = camps.find((x) => x.id === campaignId), at = g && g.encounter && g.encounter.attack;
         if (!at || at.id !== attackId) throw fail('That attack is no longer waiting.');
@@ -1009,6 +1016,15 @@
           if (id !== at.attacker && !(at.combo && id === at.combo.leader)) return;
           const f = localFind(id);
           if (f && f.c.campaignId === campaignId) { f.c.vitals = Object.assign({}, f.c.vitals, { apPenalty: 2 }); wr(CH(f.email), f.list); }
+        });
+        const ofAttack = (id) => id === at.attacker || !!(at.combo && id === at.combo.leader);
+        (usedCritIds || []).filter(ofAttack).forEach((id) => {   // a spent Next Hit Critical flag
+          const f = localFind(id);
+          if (f && f.c.campaignId === campaignId) { const v = Object.assign({}, f.c.vitals); delete v.nextCrit; f.c.vitals = v; wr(CH(f.email), f.list); }
+        });
+        (nextCritIds || []).filter(ofAttack).forEach((id) => {   // gained from a Tracking Perfect Combo
+          const f = localFind(id);
+          if (f && f.c.campaignId === campaignId) { f.c.vitals = Object.assign({}, f.c.vitals, { nextCrit: true }); wr(CH(f.email), f.list); }
         });
         g.encounter.lastAttack = { id: attackId, attacker: at.attacker, target: at.target, text: String(text || '').slice(0, 500) };
         delete g.encounter.attack;

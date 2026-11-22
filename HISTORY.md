@@ -16,3 +16,4 @@ Add a line with `echo '- ...' >> HISTORY.md`.
 - 2026-11-20 21:48 | main | Added .github/workflows/release.yml: every non-docs push to main publishes a vN GitHub release (app zip plus SQL script); docs updated
 - 2026-11-20 22:06 | main | Docs: all work goes on next; publish merges main into next, bumps the version if not docs-only, then pushes next to main
 - 2026-11-21 19:40 | next | Item/ability names and descriptions wrap and grow; NEW NPC button on Characters page; tests updated; backlog: abilities-mechanics track added, blank ability descriptions folded into it
+- 2026-11-21 20:05 | next | Tracking Next Hit Critical automated for both attackers (vitals.nextCrit; resolve_attack p_used_crit/p_next_crit; end_encounter clears); engine/SQL/flow tests added

@@ -162,6 +162,25 @@ async function scenario(label, makeAs) {
   ok(/both attacks missed/.test(last2.text) && /Finisher rolls again/.test(last2.text), P('both miss: Finisher rolls again: ' + last2.text));
   ok(((await stored(sam.id)).vitals || {}).apPenalty === 2 && ((await stored(ava.id)).vitals || {}).apPenalty === 2, P('both critical misses cost 2 AP next turn'));
 
+  // ---------- Tracking Perfect Combo: both attackers' next hit is critical ----------
+  await setAP(bS, sam.id, 6); await setAP(bV, ava.id, 6);
+  await bS.setCombo(sam.id, ava.id, 'Tracking', 25, 25, 'x');
+  const tk = await bV.startAttack(ava.id, ogre.id, 21, 6, 'Finisher roll', sam.id);
+  await bS.comboLeaderAttack(G, tk, 21, 4, 'Leader roll');
+  await kickAll(); await until(() => !R.$('defendModal').hidden);
+  R.click([...R.$('defendBody').querySelectorAll('button')].find((b) => /TAKE IT/.test(b.textContent))); await wait(700);
+  const lastT = (await bR.listCampaigns()).find((x) => x.id === G).encounter.lastAttack;
+  ok(/PERFECT COMBO/.test(lastT.text) && /next hit is a critical/.test(lastT.text), P('Tracking Perfect Combo says both next hits are critical: ' + lastT.text));
+  ok(((await stored(sam.id)).vitals || {}).nextCrit === true && ((await stored(ava.id)).vitals || {}).nextCrit === true, P('both attackers now hold Next Hit Critical'));
+  const b0 = await dmg(brute.id);
+  await bV.startAttack(ava.id, brute.id, 14, 6, 'Plain attack');   // 14 vs DA 12 is an ordinary hit
+  await kickAll(); await until(() => !R.$('defendModal').hidden);
+  R.click([...R.$('defendBody').querySelectorAll('button')].find((b) => /TAKE IT/.test(b.textContent))); await wait(700);
+  const lastP = (await bR.listCampaigns()).find((x) => x.id === G).encounter.lastAttack;
+  ok(/CRITICAL HIT/.test(lastP.text) && /Next Hit Critical spent/.test(lastP.text), P('the held flag turns an ordinary hit into a critical: ' + lastP.text));
+  ok(Math.abs((await dmg(brute.id)) - b0 - BSH.COMBAT.damage(6, 4, true)) < 0.001, P('doubled damage after AC'));
+  ok(!((await stored(ava.id)).vitals || {}).nextCrit && ((await stored(sam.id)).vitals || {}).nextCrit === true, P('only the attacker who hit spends the flag'));
+
   // ---------- rules around the combo ----------
   let e;
   try { await bS.comboLeaderAttack(G, id1, 1, 1, 'x'); } catch (er) { e = er.message; }

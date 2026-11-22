@@ -537,6 +537,8 @@ begin
     raise exception 'Only a QM can end an encounter.';
   end if;
   update public.campaigns set encounter = null where id = p_campaign;
+  update public.characters set data = jsonb_set(coalesce(data, '{}'::jsonb), '{vitals}', coalesce(data->'vitals', '{}'::jsonb) - 'nextCrit')
+   where campaign_id = p_campaign and coalesce(data->'vitals', '{}'::jsonb) ? 'nextCrit';
   delete from public.encounter_events where campaign_id = p_campaign;
 end;
 $$;
@@ -823,7 +825,8 @@ end;
 $$;
 
 drop function if exists public.resolve_attack(uuid, text, numeric, text);
-create or replace function public.resolve_attack(p_campaign uuid, p_attack text, p_damage numeric, p_text text, p_crit_fail uuid[] default '{}')
+drop function if exists public.resolve_attack(uuid, text, numeric, text, uuid[]);
+create or replace function public.resolve_attack(p_campaign uuid, p_attack text, p_damage numeric, p_text text, p_crit_fail uuid[] default '{}', p_used_crit uuid[] default '{}', p_next_crit uuid[] default '{}')
 returns void
 language plpgsql security definer set search_path = public
 as $$
@@ -855,6 +858,21 @@ begin
        where id = cf and campaign_id = p_campaign;
     end if;
   end loop;
+  -- Next Hit Critical (Tracking Perfect Combo): a spent flag is cleared first, then a new one is set on both attackers
+  foreach cf in array coalesce(p_used_crit, '{}') loop
+    if cf::text = enc->'attack'->>'attacker' or cf::text = enc->'attack'->'combo'->>'leader' then
+      update public.characters
+         set data = jsonb_set(coalesce(data, '{}'::jsonb), '{vitals}', coalesce(data->'vitals', '{}'::jsonb) - 'nextCrit')
+       where id = cf and campaign_id = p_campaign;
+    end if;
+  end loop;
+  foreach cf in array coalesce(p_next_crit, '{}') loop
+    if cf::text = enc->'attack'->>'attacker' or cf::text = enc->'attack'->'combo'->>'leader' then
+      update public.characters
+         set data = jsonb_set(coalesce(data, '{}'::jsonb), '{vitals}', coalesce(data->'vitals', '{}'::jsonb) || jsonb_build_object('nextCrit', true))
+       where id = cf and campaign_id = p_campaign;
+    end if;
+  end loop;
   update public.campaigns set encounter = (encounter - 'attack') || jsonb_build_object('lastAttack',
     jsonb_build_object('id', p_attack, 'attacker', enc->'attack'->'attacker', 'target', enc->'attack'->'target', 'text', left(coalesce(p_text, ''), 500)))
    where id = p_campaign;
@@ -862,8 +880,8 @@ end;
 $$;
 
 drop function if exists public.cancel_attack(uuid);
-revoke execute on function public.start_attack(uuid, uuid, numeric, numeric, text, uuid), public.resolve_attack(uuid, text, numeric, text, uuid[]) from public, anon;
-grant execute on function public.start_attack(uuid, uuid, numeric, numeric, text, uuid), public.resolve_attack(uuid, text, numeric, text, uuid[]) to authenticated;
+revoke execute on function public.start_attack(uuid, uuid, numeric, numeric, text, uuid), public.resolve_attack(uuid, text, numeric, text, uuid[], uuid[], uuid[]) from public, anon;
+grant execute on function public.start_attack(uuid, uuid, numeric, numeric, text, uuid), public.resolve_attack(uuid, text, numeric, text, uuid[], uuid[], uuid[]) to authenticated;
 
 -- Combo Attacks. The Leader pays 3 AP and rolls the Combo Check on their own device; this stores the result on the encounter
 -- (encounter.combos, keyed by Leader). It ends when the Leader's next turn begins, or if either of them leaves the encounter.

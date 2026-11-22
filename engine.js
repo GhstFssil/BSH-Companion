@@ -227,7 +227,7 @@
         { t: 'You may move up to your RD as a free action.' }, { t: 'You may move up to your RD as a free action and regain 50% of your max SP.' }],
       Grappling: [{ t: 'Target is knocked prone.' }, { t: 'Target is knocked prone and drops whatever it is holding.' }, { t: 'Target is knocked prone and whatever it is holding is thrown 5 m away.' },
         { t: 'Target is knocked prone and you may take an item it is holding with your free hand.' }, { t: 'Target is knocked prone and stunned and you may take an item it is holding with your free hand.' }],
-      Tracking: [{ t: 'SA +3', sa: 3 }, { t: 'SA +5', sa: 5 }, { t: 'SA +7', sa: 7 }, { t: 'SA +10', sa: 10 }, { t: 'Critical hit, next hit is a critical hit.', crit: true }],
+      Tracking: [{ t: 'SA +3', sa: 3 }, { t: 'SA +5', sa: 5 }, { t: 'SA +7', sa: 7 }, { t: 'SA +10', sa: 10 }, { t: "Critical hit, and both attackers' next hit is a critical hit.", crit: true }],
       Courage: [{ t: 'Target loses 5 SP.', sp: 5 }, { t: 'Target loses 8 SP.', sp: 8 }, { t: 'Target loses 10 SP.', sp: 10 }, { t: 'Target loses 12 SP.', sp: 12 }, { t: 'Target is winded and stunned.' }],
       Handling: [{ t: 'Target has -2 to its next Skill Check.' }, { t: 'Target has -4 to its next Skill Check.' }, { t: 'Target has -6 to its next Skill Check.' },
         { t: 'Target has -8 to its next Skill Check.' }, { t: 'Target fails its next Skill Check.' }]
@@ -239,7 +239,7 @@
     // column of a level: -1 below CL 10, 0..3 for CL 10..25, 4 = Perfect
     column(level) { return level ? COMBO.LEVELS.indexOf(level) : -1; },
     /* Works out a Combo Attack once both attackers have rolled.
-       o: { da, ac, skill, level, L: {total, power}, F: {total, power}, critMax (3, or 4 with Critical Reave Theory), perfectMax (0, or 1 with Perfectionist) }
+       o: { da, ac, skill, level, L: {total, power}, F: {total, power}, critMax (3, or 4 with Critical Reave Theory), perfectMax (0, or 1 with Perfectionist), forceCrit: {L, F} (that attacker holds a Next Hit Critical) }
        Returns { kind: 'miss'|'hit'|'critical'|'perfect', retry (nobody hit: the Finisher may roll again), L, F (final totals and powers, hit/crit flags),
                  diff, bonus (applied), recv ('both'|'finisher'|null), damage (one instance against AC, or 0), effects: {ap, sp}, notes: [] } */
     resolve(o) {
@@ -269,6 +269,9 @@
       L.crit = COMBAT.classify(L.total, da) === 'crit' || COMBAT.classify(res1.L.total, da) === 'crit';
       F.crit = COMBAT.classify(F.total, da) === 'crit' || COMBAT.classify(res1.F.total, da) === 'crit';
       if (bonus && bonus.crit) { if (L.hit) L.crit = true; if (F.hit) F.crit = true; }
+      // a held Next Hit Critical makes that attacker's hit critical, and is spent
+      const fc = o.forceCrit || {}, used = { L: !!fc.L && L.hit, F: !!fc.F && F.hit };
+      if (used.L) L.crit = true; if (used.F) F.crit = true;
       let damage = 0;
       if (L.hit && F.hit) {
         let sum = r2(L.power + F.power); if (kind === 'perfect') sum = r2(sum * 2);
@@ -280,7 +283,7 @@
       const effects = {};
       if (bonus && bonus.ap) effects.ap = bonus.ap;
       if (bonus && bonus.sp) effects.sp = bonus.sp;
-      return { kind, retry: false, L, F, diff, bonus, recv: res.recv, damage, effects, notes, anyHit: L.hit || F.hit };
+      return { kind, retry: false, L, F, diff, bonus, recv: res.recv, damage, effects, notes, anyHit: L.hit || F.hit, used };
     }
   };
 
