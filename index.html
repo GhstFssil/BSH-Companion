@@ -80,9 +80,17 @@
   .corner.center { left: 50%; transform: translateX(-50%); }
   #screen-start > p.version { margin: 1rem 0 0; text-align: center; color: var(--ink-text); font-size: max(8px, calc(.8rem + var(--fs))); letter-spacing: .08em; }
   html.on-rules, body.on-rules { background: #2b2b2b; }
-  body.on-rules .corner { background: #2b2b2b; color: var(--ink-input); border-color: var(--ink-input); }
-  body.on-rules .corner:hover, body.on-rules .corner:focus-visible { background: var(--ink-input); color: #1c1c1c; }
+  body.on-rules .corner, body.on-rules .doc-bar .btn { background: #2b2b2b; color: var(--ink-input); border-color: var(--ink-input); }
+  body.on-rules .corner:hover, body.on-rules .corner:focus-visible, body.on-rules .doc-bar .btn:hover, body.on-rules .doc-bar .btn:focus-visible { background: var(--ink-input); color: #1c1c1c; }
+  /* RULES / GUIDE / NOTES: top center on wide screens; on narrow ones a second row under BACK and LOG OUT */
+  .doc-bar { position: fixed; top: calc(env(safe-area-inset-top) + 12px); left: 50%; transform: translateX(-50%); z-index: 10; display: flex; gap: .4rem; }
+  .doc-bar .btn { background: #000; }
+  @media (max-width: 640px) {
+    .doc-bar { top: calc(env(safe-area-inset-top) + 62px); }
+    body { padding-top: calc(env(safe-area-inset-top) + 114px); }
+  }
   #screen-rules, #screen-guide, #screen-notes { --r-ink: var(--ink-input); --r-bright: var(--ink-input); align-items: stretch; margin: 0; padding: 4.2rem 0 3rem; width: min(100%, 52rem); }
+  @media (max-width: 640px) { #screen-rules, #screen-guide, #screen-notes { padding-top: 1rem; } }
   @supports (color: color-mix(in srgb, red, white)) {
     #screen-rules, #screen-guide, #screen-notes { --r-ink: color-mix(in srgb, var(--ink-input) 70%, #fff); --r-bright: color-mix(in srgb, var(--ink-input) 45%, #fff); }
   }
@@ -351,6 +359,18 @@
   .iline input.num { text-align: center; padding-left: .05rem; padding-right: .05rem; }
   .iline .btn { width: 100%; min-height: 0; padding: .5rem .1rem; font-size: max(8px, calc(.68rem + var(--fs))); letter-spacing: 0; }
   .iline.abl { grid-template-columns: 1.7rem minmax(0, 1fr) 4.8rem; }
+  /* Compendium: +/- ranges on a mob's talents and proficiencies, the mob list, drops */
+  .varrow { display: flex; gap: .3rem; align-items: center; min-width: 0; }
+  .varrow > input { flex: 1 1 0; min-width: 0; }
+  .varrow .pm { flex: 0 0 auto; }
+  .note.left { text-align: left; }
+  .mobrow { display: flex; flex-wrap: wrap; gap: .4rem; align-items: stretch; }
+  .mobrow .mname { flex: 1 1 12rem; min-width: 0; }
+  .mob-acts { display: flex; flex-direction: column; gap: .4rem; }
+  .book-counts { margin: .6rem 0; }
+  .drop-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; gap: .35rem; align-items: end; }
+  .drop-row > :first-child { grid-column: 1 / -1; }
+  .drop-row select { width: 100%; min-width: 0; }
   .atk { border: 2px solid var(--ink); padding: .4rem; margin-bottom: .6rem; display: flex; flex-direction: column; gap: .4rem; }
   .atk .iline.atkl { grid-template-columns: minmax(0, 1fr) 5.5rem 4.8rem; }
   .atk textarea { min-height: 3.5rem; }
@@ -406,9 +426,11 @@
 <body>
 
   <!-- Shown only while logged in, on every screen -->
-  <button class="btn small corner center" id="rulesBtn" type="button" data-go="rules"><span class="px" data-px="RULES"></span></button>
-  <button class="btn small corner center" id="guideBtn" type="button" data-go="guide" hidden><span class="px" data-px="GUIDE"></span></button>
-  <button class="btn small corner right" id="notesBtn" type="button" data-go="notes" hidden><span class="px" data-px="NOTES"></span></button>
+  <nav class="doc-bar" id="docBar" aria-label="Rules, guide and notes">
+    <button class="btn small" id="rulesBtn" type="button" data-go="rules"><span class="px" data-px="RULES"></span></button>
+    <button class="btn small" id="guideBtn" type="button" data-go="guide"><span class="px" data-px="GUIDE"></span></button>
+    <button class="btn small" id="notesBtn" type="button" data-go="notes" hidden><span class="px" data-px="NOTES"></span></button>
+  </nav>
   <button class="btn small corner right" id="logoutBtn" type="button" hidden><span class="px" data-px="LOG OUT"></span></button>
 
   <!-- LOADING (shown while the saved session is restored) -->
@@ -534,6 +556,7 @@
     <p class="welcome-name" id="welcomeName"></p>
     <div class="stack">
       <button class="btn" type="button" data-go="characters"><span data-px="CHARACTERS"></span></button>
+      <button class="btn" type="button" data-go="compendiums" id="homeCompBtn"><span data-px="COMPENDIUM"></span></button>
       <button class="btn" type="button" data-go="campaigns"><span data-px="CAMPAIGNS"></span></button>
       <button class="btn" type="button" data-go="create-campaign"><span data-px="CREATE CAMPAIGN"></span></button>
       <button class="btn" type="button" data-go="join-campaign"><span data-px="JOIN CAMPAIGN"></span></button>
@@ -666,6 +689,22 @@
       <div class="char-list" id="charList"></div>
       <h3 class="lbl" id="npcHead" hidden>NPCs</h3>
       <div class="char-list" id="npcList"></div>
+    </div>
+  </section>
+
+  <!-- COMPENDIUMS (your libraries of items, mobs, abilities, attacks and custom actions) -->
+  <section class="screen" id="screen-compendiums" hidden>
+    <button class="btn small corner left" type="button" data-go="home"><span class="px" data-px="< BACK"></span></button>
+    <h2 class="heading px" data-px="COMPENDIUM"></h2>
+    <div class="stack">
+      <button class="btn" id="newCompBtn" type="button"><span class="px" data-px="NEW COMPENDIUM"></span></button>
+      <button class="btn" id="importCompBtn" type="button"><span class="px" data-px="IMPORT COMPENDIUM"></span></button>
+      <input type="file" id="compFile" accept=".json,application/json" hidden aria-label="Compendium file">
+      <p class="note" id="noComps" hidden>No compendiums yet. A compendium holds items, mobs, abilities, attacks and custom actions you make once and copy onto sheets.</p>
+      <p class="msg" id="compMsg" role="alert"></p>
+      <div class="char-list" id="compList"></div>
+      <h3 class="lbl" id="compOtherHead" hidden>Used by your campaigns (read only)</h3>
+      <div class="char-list" id="compOther"></div>
     </div>
   </section>
 

@@ -6,7 +6,7 @@ const uidOf = (req) => { try { return JSON.parse(Buffer.from((req.headers.author
 
 function createMock() {
   var mockOrder;
-  const db = { users: [], profiles: [], characters: [], campaigns: [], members: [], gifts: [], events: [], maps: [], tokens: [], log: [], failSaves: false };
+  const db = { users: [], profiles: [], characters: [], compendiums: [], campaigns: [], members: [], gifts: [], events: [], maps: [], tokens: [], log: [], failSaves: false };
   mockOrder = (g, rnd) => {
     const I = g.encounter.initiatives, R = rnd || g.encounter.round || 1, slots = {};
     db.characters.filter((c) => c.campaign_id === g.id && I[c.id]).forEach((c) => { slots[c.id] = I[c.id]; });
@@ -73,6 +73,7 @@ function createMock() {
           weaponProps: it.weaponProps && typeof it.weaponProps === 'object' ? it.weaponProps : {},
           magicProps: it.magicProps && typeof it.magicProps === 'object' ? it.magicProps : {},
           buffs: Array.isArray(it.buffs) && it.buffs.length <= 30 ? it.buffs : [],
+          cref: it.cref && typeof it.cref === 'object' && !Array.isArray(it.cref) && JSON.stringify(it.cref).length <= 200 ? it.cref : null,
           twoHanded: it.twoHanded === true || it.twoHanded === 'true', attacks: Array.isArray(it.attacks) && it.attacks.length <= 20 ? it.attacks : [] } });
         return send(204);
       }
@@ -574,6 +575,36 @@ function createMock() {
         const idp = url.searchParams.get('id');   // no id filter = all profiles (readable by every signed-in player)
         const rows = db.profiles.filter((x) => !idp || x.id === idp.replace('eq.', '')).map(({ id, username, name }) => ({ id, username, name }));
         return (req.headers.accept || '').includes('pgrst.object') ? (rows[0] ? send(200, rows[0]) : send(406, { message: 'no rows' })) : send(200, rows);
+      }
+      if (p === '/rest/v1/compendiums') {   // RLS: owner, or a QM of a campaign using it, reads; only the owner writes
+        if (!me) return send(401, { message: 'JWT required' });
+        const qmReads = (id) => db.campaigns.some((g) => g.compendium_id === id && db.members.some((m) => m.campaign_id === g.id && m.user_id === me && m.role === 'qm'));
+        if (req.method === 'GET') return send(200, db.compendiums.filter((c) => c.owner === me || qmReads(c.id)).slice().sort((a, b) => b.updated_at.localeCompare(a.updated_at)));
+        if (req.method === 'POST') {
+          const RLS = () => send(403, { code: '42501', message: 'new row violates row-level security policy for table "compendiums"' });
+          if (body.owner !== me) return RLS();
+          const i = db.compendiums.findIndex((c) => c.id === body.id);
+          if (i >= 0 && db.compendiums[i].owner !== me) return RLS();
+          const nm = String(body.name || '').trim();
+          if (nm.length < 1 || nm.length > 60 || !body.data || typeof body.data !== 'object' || Array.isArray(body.data) || JSON.stringify(body.data).length > 5000000) return send(400, { code: '23514', message: 'new row violates check constraint "compendiums_data_size"' });
+          const row = { id: body.id, owner: me, name: body.name, data: body.data, created_at: i >= 0 ? db.compendiums[i].created_at : new Date().toISOString(), updated_at: new Date().toISOString() };
+          if (i >= 0) db.compendiums[i] = row; else db.compendiums.push(row);
+          return send(201);
+        }
+        if (req.method === 'DELETE') {
+          const id = (url.searchParams.get('id') || '').replace('eq.', '');
+          if (db.compendiums.some((c) => c.id === id && c.owner === me)) { db.compendiums = db.compendiums.filter((c) => c.id !== id); db.campaigns.forEach((g) => { if (g.compendium_id === id) g.compendium_id = null; }); }
+          return send(204);
+        }
+      }
+      if (p === '/rest/v1/rpc/set_campaign_compendium') {
+        if (!me) return send(401, { message: 'JWT required' });
+        const P = (message) => send(400, { code: 'P0001', message });
+        const g = db.campaigns.find((x) => x.id === body.p_campaign);
+        if (!g || !db.members.some((m) => m.campaign_id === g.id && m.user_id === me && m.role === 'qm')) return P("Only a QM can choose the campaign's compendium.");
+        if (body.p_compendium && !db.compendiums.some((c) => c.id === body.p_compendium && c.owner === me)) return P('You can only choose one of your own compendiums.');
+        g.compendium_id = body.p_compendium || null;
+        return send(204);
       }
       if (p === '/rest/v1/characters') {
         if (!me) return send(401, { message: 'JWT required' });

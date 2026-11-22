@@ -22,4 +22,5 @@ cd tests && npm install      # jsdom and @electric-sql/pglite
 - `gifts.js` and `spawn.js` take about 100 s each and can time out.
 - `et2.js` uses real dice and is occasionally flaky. Rerun before assuming a regression.
 - Last full run from this folder (2026-11-20): every file passed (sql 355, combat2 94, roster 116, campaigns 266, enc 114, and the rest). The only slow-to-pass issue seen was combat2 racing the 5 s poll once; fixed by refreshing devices after changing AP.
+- `compendium.js`: compendiums end to end (editor, mob ranges and drops, export/import, campaign compendium for QMs, ADD MOBS numbering, GIVE ITEM, co-QM read only, UPDATE FROM COMPENDIUM, FROM COMPENDIUM on sheets) on both backends.
 - Areas: `combat2.js` crits and Combo Attacks, `wa.js` weapon attacks and defending, `loadatk.js` attack lists, held weapons, the Load action and QM item changes, `npcmgr.js` / `mknpc.js` NPC owner features, `enc.js` / `turns.js` encounters, `combo.js` the combo engine alone.

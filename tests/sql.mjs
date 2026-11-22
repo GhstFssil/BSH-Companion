@@ -729,4 +729,32 @@ ok(!(await as('sam', `delete from campaigns where id=$1`, [C])).error, 'QM delet
 { const r = (await db.query(`select campaign_id,is_npc,owner,npc_visible from characters where id=$1`, [npc3])).rows[0]; ok(r && r.campaign_id === null && r.is_npc && r.owner === ids.sam && !r.npc_visible, 'its NPCs are kept, outside any campaign, with their owner'); }
 ok((await as('sam', `select campaign_id from characters where id=$1`, [pcSam])).rows[0].campaign_id === null, 'PCs survive, unlinked');
 ok((await as('sam', `select count(*)::int c from campaign_members where campaign_id=$1`, [C])).rows[0].c === 0, 'no orphaned memberships');
+// ---- compendiums ----
+{ ids.kim = (await db.query(`insert into auth.users (email, raw_user_meta_data) values ('kim@x.com', $1) returning id`, [JSON.stringify({ username: 'kim_4', name: 'kim' })])).rows[0].id;
+  const K = (await as('kim', `insert into campaigns (name) values ('Book Test') returning id`)).rows[0].id;
+  await as('sam', `insert into campaign_members (campaign_id,user_id,role) values ($1,$2,'member')`, [K, ids.sam]);
+  await as('ava', `insert into campaign_members (campaign_id,user_id,role) values ($1,$2,'member')`, [K, ids.ava]);
+  const B = uuid(), B2 = uuid();
+  ok(!(await as('kim', `insert into compendiums (id, owner, name, data) values ($1,$2,'Monsters','{"items":[{"cid":"a","name":"Club"}]}')`, [B, ids.kim])).error, 'compendium: owner creates one');
+  ok(err(await as('sam', `insert into compendiums (id, owner, name, data) values ($1,$2,'X','{}')`, [uuid(), ids.kim]), /row-level security/), "compendium: cannot create one for someone else");
+  ok(err(await as('kim', `insert into compendiums (id, owner, name, data) values ($1,$2,'  ','{}')`, [uuid(), ids.kim]), /check constraint/) && err(await as('kim', `insert into compendiums (id, owner, name, data) values ($1,$2,'A','[]')`, [uuid(), ids.kim]), /check constraint/), 'compendium: blank name or non-object data refused');
+  ok(!(await as('sam', `insert into compendiums (id, owner, name, data) values ($1,$2,'Sams','{}')`, [B2, ids.sam])).error, 'compendium: a player makes their own');
+  ok((await as('sam', `select id from compendiums where id=$1`, [B])).rows.length === 0, 'compendium: others cannot read it');
+  ok((await as('sam', `update compendiums set name='Hacked' where id=$1 returning 1`, [B])).rows.length === 0, 'compendium: others cannot change it');
+  ok(err(await as('sam', `select set_campaign_compendium($1,$2)`, [K, B2]), /Only a QM/), 'compendium: a player cannot attach one');
+  ok(err(await as('kim', `select set_campaign_compendium($1,$2)`, [K, B2]), /your own compendiums/), "compendium: a QM cannot attach someone else's");
+  ok(!(await as('kim', `select set_campaign_compendium($1,$2)`, [K, B])).error && (await as('sam', `select compendium_id from campaigns where id=$1`, [K])).rows[0].compendium_id === B, 'compendium: QM attaches their own; members see the id');
+  ok((await as('sam', `select id from compendiums where id=$1`, [B])).rows.length === 0, 'compendium: players of the campaign still cannot read it');
+  await as('kim', `update campaign_members set role='qm' where campaign_id=$1 and user_id=$2`, [K, ids.ava]);
+  ok((await as('ava', `select data->'items'->0->>'name' n from compendiums where id=$1`, [B])).rows[0].n === 'Club', 'compendium: a co-QM reads the attached one');
+  ok((await as('ava', `update compendiums set name='Mine' where id=$1 returning 1`, [B])).rows.length === 0 && (await as('ava', `delete from compendiums where id=$1 returning 1`, [B])).rows.length === 0, 'compendium: a co-QM cannot change or delete it');
+  const pcS = uuid(); await as('sam', `insert into characters (id, owner, data, campaign_id) values ($1,$2,'{"info":{"name":"S"}}',$3)`, [pcS, ids.sam, K]);
+  ok(!(await as('kim', `select give_item(null,$1,$2::jsonb)`, [pcS, JSON.stringify({ name: 'Club', qty: 1, cref: { c: B, e: 'a' } })])).error
+    && (await as('sam', `select item->'cref'->>'e' e from item_gifts where character_id=$1`, [pcS])).rows[0].e === 'a', 'give_item carries the compendium link (cref)');
+  ok(!(await as('kim', `select give_item(null,$1,$2::jsonb)`, [pcS, JSON.stringify({ name: 'Rock', qty: 1, cref: 'x' })])).error
+    && (await as('sam', `select item->'cref' c from item_gifts where character_id=$1 and item->>'name'='Rock'`, [pcS])).rows[0].c === null, 'give_item drops a bad cref');
+  ok(!(await as('kim', `select set_campaign_compendium($1,null)`, [K])).error && (await as('ava', `select id from compendiums where id=$1`, [B])).rows.length === 0, 'compendium: detaching ends the co-QM read');
+  await as('kim', `select set_campaign_compendium($1,$2)`, [K, B]);
+  ok(!(await as('kim', `delete from compendiums where id=$1`, [B])).error && (await as('kim', `select compendium_id from campaigns where id=$1`, [K])).rows[0].compendium_id === null, 'compendium: deleting it clears the campaign link');
+}
 console.log(fails ? `${fails} FAILED of ${n}` : `ALL ${n} PASSED`); process.exit(fails ? 1 : 0);

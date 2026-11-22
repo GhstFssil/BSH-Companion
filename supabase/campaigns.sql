@@ -489,6 +489,7 @@ begin
           'weaponProps', case when jsonb_typeof(p_item->'weaponProps') = 'object' and length(p_item->>'weaponProps') <= 3000 then p_item->'weaponProps' else '{}'::jsonb end,
           'buffs',    case when jsonb_typeof(p_item->'buffs') = 'array' and jsonb_array_length(p_item->'buffs') <= 30 then p_item->'buffs' else '[]'::jsonb end,
           'twoHanded', coalesce(p_item->>'twoHanded', 'false') = 'true',
+          'cref',     case when jsonb_typeof(p_item->'cref') = 'object' and length(p_item->>'cref') <= 200 then p_item->'cref' else null end,
           'attacks',  case when jsonb_typeof(p_item->'attacks') = 'array' and jsonb_array_length(p_item->'attacks') <= 20 and length(p_item->>'attacks') <= 8000 then p_item->'attacks' else '[]'::jsonb end));
 end;
 $$;
@@ -1764,3 +1765,69 @@ end;
 $$;
 revoke execute on function public.set_items(uuid, jsonb), public.load_weapon(uuid, text, numeric), public.set_loaded(uuid, text, boolean) from public, anon;
 grant execute on function public.set_items(uuid, jsonb), public.load_weapon(uuid, text, numeric), public.set_loaded(uuid, text, boolean) to authenticated;
+
+-- ================= Compendiums =================
+-- A player's own library of items, mobs, abilities, attacks and custom actions (data jsonb, shaped by the app).
+-- The owner reads and changes it. A campaign can use one compendium (campaigns.compendium_id); every QM of that
+-- campaign may read it (to spawn mobs and give items from it), players never can. Only a QM sets it, and only to
+-- a compendium of their own (or none).
+create table if not exists public.compendiums (
+  id uuid primary key default gen_random_uuid(),
+  owner uuid not null references auth.users (id) on delete cascade,
+  name text not null default 'Compendium',
+  data jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+alter table public.compendiums drop constraint if exists compendiums_name_len;
+alter table public.compendiums add constraint compendiums_name_len check (char_length(btrim(name)) between 1 and 60);
+alter table public.compendiums drop constraint if exists compendiums_data_size;
+alter table public.compendiums add constraint compendiums_data_size check (jsonb_typeof(data) = 'object' and octet_length(data::text) <= 5000000);
+create index if not exists compendiums_owner_idx on public.compendiums (owner);
+alter table public.compendiums enable row level security;
+
+alter table public.campaigns add column if not exists compendium_id uuid references public.compendiums (id) on delete set null;
+
+-- true when the signed-in player is a QM of a campaign that uses this compendium
+create or replace function public.compendium_qm_reads(p_compendium uuid)
+returns boolean
+language sql stable security definer set search_path = public
+as $$
+  select exists (
+    select 1 from public.campaigns g join public.campaign_members m on m.campaign_id = g.id
+    where g.compendium_id = p_compendium and m.user_id = auth.uid() and m.role = 'qm'
+  );
+$$;
+revoke execute on function public.compendium_qm_reads(uuid) from public, anon;
+grant execute on function public.compendium_qm_reads(uuid) to authenticated;
+
+drop policy if exists "compendiums readable" on public.compendiums;
+create policy "compendiums readable" on public.compendiums
+  for select to authenticated using (owner = auth.uid() or public.compendium_qm_reads(id));
+drop policy if exists "compendiums create" on public.compendiums;
+create policy "compendiums create" on public.compendiums
+  for insert to authenticated with check (owner = auth.uid());
+drop policy if exists "compendiums update" on public.compendiums;
+create policy "compendiums update" on public.compendiums
+  for update to authenticated using (owner = auth.uid()) with check (owner = auth.uid());
+drop policy if exists "compendiums delete" on public.compendiums;
+create policy "compendiums delete" on public.compendiums
+  for delete to authenticated using (owner = auth.uid());
+grant select, insert, update, delete on public.compendiums to authenticated;
+
+create or replace function public.set_campaign_compendium(p_campaign uuid, p_compendium uuid)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+begin
+  if auth.uid() is null or not public.is_campaign_qm(p_campaign) then
+    raise exception 'Only a QM can choose the campaign''s compendium.';
+  end if;
+  if p_compendium is not null and not exists (select 1 from public.compendiums where id = p_compendium and owner = auth.uid()) then
+    raise exception 'You can only choose one of your own compendiums.';
+  end if;
+  update public.campaigns set compendium_id = p_compendium where id = p_campaign;
+end;
+$$;
+revoke execute on function public.set_campaign_compendium(uuid, uuid) from public, anon;
+grant execute on function public.set_campaign_compendium(uuid, uuid) to authenticated;

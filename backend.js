@@ -32,6 +32,8 @@
  *             startTurn(charId, spGain, spMax, apMax?) -> {applied, ...}     (AP back to full, SP +spGain unless AP was 0; once per turn change)
  *             (listCampaigns rows carry `encounter`: null, or { id, startedAt, round, turn, moved, initiatives: { charId: {die, ib, total, tb, by} } })
  *             turn order = highest total first, ties by the random tb (see BSHBackend.turnOrder)
+ *             listCompendiums() -> [{id, name, data, ownerId, mine, updated}] (yours, plus any used by a campaign where you are QM), saveCompendium({id, name, data}) (yours only),
+ *             deleteCompendium(id), setCampaignCompendium(campaignId, compendiumId|null) (QM only; one of your own; listCampaigns rows carry `compendiumId`)
  * A "user" is { id, email, name, username }. Failures throw Error with a message fit to show players.
  */
 (function (root, factory) {
@@ -199,7 +201,7 @@
       // Returns every campaign: { id, name, createdBy, createdAt, members: [{userId, username, name, role}] }
       async listCampaigns() {
         const [g, m, p, ev] = await Promise.all([
-          sb.from('campaigns').select('id,name,created_by,created_at,encounter,spawn,inactive_ids,codex').order('created_at', { ascending: false }),
+          sb.from('campaigns').select('id,name,created_by,created_at,encounter,spawn,inactive_ids,codex,compendium_id').order('created_at', { ascending: false }),
           sb.from('campaign_members').select('campaign_id,user_id,role,joined_at'),
           sb.from('profiles').select('id,username,name'),
           sb.from('encounter_events').select('id,campaign_id,name,visible,total,tb,one_time,round')   // the database only returns what you may see
@@ -219,7 +221,7 @@
           id: r.id, name: r.name, createdBy: r.created_by, createdAt: r.created_at,
           encounter: r.encounter ? Object.assign({}, r.encounter, { events: (ev.data || []).filter((e) => e.campaign_id === r.id)
             .map((e) => ({ id: e.id, name: e.name, visible: !!e.visible, total: Number(e.total), tb: Number(e.tb), oneTime: !!e.one_time, round: e.round })) }) : null,
-          spawn: r.spawn || null, inactive: r.inactive_ids || [], codex: r.codex || {},
+          spawn: r.spawn || null, inactive: r.inactive_ids || [], codex: r.codex || {}, compendiumId: r.compendium_id || null,
           members: sortMembers(byCampaign[r.id] || [])
         }));
       },
@@ -519,6 +521,25 @@
         const { error } = await sb.rpc('codex_remove', { p_campaign: campaignId, p_kind: kind, p_key: key });
         if (error) throw friendly(error, 'Could not update the codex.');
       },
+      // Compendiums: your own, plus (read only) the ones used by campaigns where you are QM
+      async listCompendiums() {
+        const { data, error } = await sb.from('compendiums').select('id,owner,name,data,updated_at').order('updated_at', { ascending: false });
+        if (error) throw friendly(error, 'Could not load your compendiums.');
+        return (data || []).map((r) => ({ id: r.id, name: r.name, data: r.data || {}, ownerId: r.owner, mine: r.owner === uid, updated: r.updated_at }));
+      },
+      async saveCompendium(c) {
+        const name = cleanCompendiumName(c.name);
+        const { error } = await sb.from('compendiums').upsert({ id: c.id, owner: uid, name, data: c.data || {}, updated_at: new Date().toISOString() }, { onConflict: 'id' });
+        if (error) throw friendly(error, /size|check/i.test(error.message || '') ? 'That compendium is too big to save.' : 'Could not save the compendium.');
+      },
+      async deleteCompendium(id) {
+        const { error } = await sb.from('compendiums').delete().eq('id', id);
+        if (error) throw friendly(error, 'Could not delete the compendium.');
+      },
+      async setCampaignCompendium(campaignId, compendiumId) {
+        const { error } = await sb.rpc('set_campaign_compendium', { p_campaign: campaignId, p_compendium: compendiumId || null });
+        if (error) throw friendly(error, 'Could not change the campaign\'s compendium.');
+      },
       async qmDealDamage(campaignId, targetId, amount) {
         const { error } = await sb.rpc('qm_deal_damage', { p_campaign: campaignId, p_target: targetId, p_amount: amount });
         if (error) throw friendly(error, 'Could not apply the damage.');
@@ -561,6 +582,12 @@
   }
 
   const ONLY_PLAYER = 'You are the only player in this campaign, so you must stay QM.';
+  function cleanCompendiumName(name) {
+    const n = String(name == null ? '' : name).trim();
+    if (!n) throw fail('Give the compendium a name.');
+    if (n.length > 60) throw fail('That name is too long (60 letters at most).');
+    return n;
+  }
   function cleanCampaignName(name) {
     const clean = String(name || '').replace(/\s+/g, ' ').trim();
     if (!clean) throw fail('Give the campaign a name.');
@@ -595,7 +622,7 @@
     }
 
     let uid = null;
-    const ACC = 'bsh.accounts', SES = 'bsh.session', GR = 'bsh.campaigns', GIFTS = 'bsh.gifts', MAPS = 'bsh.maps', CH = (u) => 'bsh.chars.' + u;
+    const ACC = 'bsh.accounts', SES = 'bsh.session', GR = 'bsh.campaigns', COMP = 'bsh.compendiums', GIFTS = 'bsh.gifts', MAPS = 'bsh.maps', CH = (u) => 'bsh.chars.' + u;
     const pub = (a) => ({ id: a.email, email: a.email, name: a.name, username: a.username });
 
     return {
@@ -676,7 +703,7 @@
         return rd(GR, []).map((g) => ({
           id: g.id, name: g.name, createdBy: g.createdBy, createdAt: g.createdAt,
           encounter: g.encounter ? Object.assign({}, g.encounter, { tokens: undefined, events: (g.encounter.events || []).filter((e) => e.visible || isQmOf(g, uid)) }) : null,
-          spawn: g.spawn || null, inactive: g.inactive || [], codex: g.codex || {},
+          spawn: g.spawn || null, inactive: g.inactive || [], codex: g.codex || {}, compendiumId: g.compendiumId || null,
           members: sortMembers(g.members.map((m) => {
             const a = accounts[m.userId] || {};
             return { userId: m.userId, username: a.username || '?', name: a.name || '', role: m.role, joinedAt: m.joinedAt };
@@ -843,7 +870,8 @@
                   weaponProps: item.weaponProps && typeof item.weaponProps === 'object' ? item.weaponProps : {},
                   magicProps: item.magicProps && typeof item.magicProps === 'object' ? item.magicProps : {},
                   buffs: Array.isArray(item.buffs) && item.buffs.length <= 30 ? item.buffs : [],
-                  twoHanded: item.twoHanded === true, attacks: Array.isArray(item.attacks) && item.attacks.length <= 20 ? item.attacks : [] } });
+                  twoHanded: item.twoHanded === true, attacks: Array.isArray(item.attacks) && item.attacks.length <= 20 ? item.attacks : [],
+                  cref: item.cref && typeof item.cref === 'object' && !Array.isArray(item.cref) && JSON.stringify(item.cref).length <= 200 ? item.cref : null } });
         wr(GIFTS, gifts);
       },
 
@@ -1176,6 +1204,34 @@
         g.codex = g.codex || {};
         if (g.codex[kind]) delete g.codex[kind][key];
         g.codex.removed = g.codex.removed || {}; g.codex.removed[kind] = Object.assign({}, g.codex.removed[kind], { [key]: true });
+        wr(GR, camps);
+      },
+      async listCompendiums() {
+        const qmOf = rd(GR, []).filter((g) => g.compendiumId && isQmOf(g, uid)).map((g) => g.compendiumId);
+        return rd(COMP, []).filter((c) => c.owner === uid || qmOf.includes(c.id))
+          .sort((a, b) => String(b.updated).localeCompare(String(a.updated)))
+          .map((c) => ({ id: c.id, name: c.name, data: JSON.parse(JSON.stringify(c.data || {})), ownerId: c.owner, mine: c.owner === uid, updated: c.updated }));
+      },
+      async saveCompendium(c) {
+        const name = cleanCompendiumName(c.name), data = c.data && typeof c.data === 'object' && !Array.isArray(c.data) ? c.data : {};
+        if (JSON.stringify(data).length > 5000000) throw fail('That compendium is too big to save.');
+        const list = rd(COMP, []), i = list.findIndex((x) => x.id === c.id);
+        if (i >= 0 && list[i].owner !== uid) throw fail('Could not save the compendium.');
+        const row = { id: c.id, owner: uid, name, data: JSON.parse(JSON.stringify(data)), updated: new Date().toISOString() };
+        if (i >= 0) list[i] = row; else list.push(row);
+        wr(COMP, list);
+      },
+      async deleteCompendium(id) {
+        const list = rd(COMP, []), c = list.find((x) => x.id === id);
+        if (!c || c.owner !== uid) return;
+        wr(COMP, list.filter((x) => x !== c));
+        const camps = rd(GR, []); camps.forEach((g) => { if (g.compendiumId === id) g.compendiumId = null; }); wr(GR, camps);
+      },
+      async setCampaignCompendium(campaignId, compendiumId) {
+        const camps = rd(GR, []), g = camps.find((x) => x.id === campaignId);
+        if (!g || !isQmOf(g, uid)) throw fail('Only a QM can choose the campaign\'s compendium.');
+        if (compendiumId && !rd(COMP, []).some((c) => c.id === compendiumId && c.owner === uid)) throw fail('You can only choose one of your own compendiums.');
+        g.compendiumId = compendiumId || null;
         wr(GR, camps);
       },
       async qmDealDamage(campaignId, targetId, amount) {

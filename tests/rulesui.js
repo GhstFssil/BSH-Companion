@@ -5,7 +5,7 @@ const { ok, done } = checker();
   const hit = []; w.Element.prototype.scrollIntoView = function () { hit.push(this.id); };
   await wait(100);
   ok(A.$('appVersion').textContent === 'v2', 'title page shows version v2: ' + A.$('appVersion').textContent);
-  ok(!A.$('screen-start').hidden && !A.$('rulesBtn').hidden && A.$('rulesBtn').classList.contains('center'), 'RULES button (center top) is on the title page when logged out');
+  ok(!A.$('screen-start').hidden && !A.$('rulesBtn').hidden && A.$('rulesBtn').closest('#docBar') && !A.$('guideBtn').hidden, 'RULES and GUIDE (top bar) are on the title page when logged out');
   A.click(A.$('rulesBtn')); await wait(50);
   ok(!A.$('screen-rules').hidden && A.vis().join() === 'rules', 'RULES opens the rulebook');
   ok(A.$('rulesBtn').hidden, 'the RULES button hides on the rules page');
@@ -32,6 +32,8 @@ const { ok, done } = checker();
   // logged in
   await A.signUp(); await wait(100);
   ok(A.vis().join() === 'home' && !A.$('rulesBtn').hidden, 'RULES is also on every logged-in screen');
+  for (const scr of ['home', 'characters', 'campaigns', 'options', 'compendiums']) { A.go(scr); await wait(40); ok(!A.$('rulesBtn').hidden && !A.$('guideBtn').hidden && !A.$('notesBtn').hidden, 'RULES, GUIDE and NOTES on ' + scr); }
+  A.go('home'); await wait(40);
   A.click(A.$('rulesBtn')); await wait(50);
   ok(A.vis().join() === 'rules' && !A.$('logoutBtn').hidden === false, 'logged-in users can open the rules (no redirect home)');
   A.click(A.$('rulesBack')); await wait(50);

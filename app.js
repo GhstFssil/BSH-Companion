@@ -152,8 +152,8 @@
   }
 
   /* ================= Routing ================= */
-  const SCREENS = ['loading', 'start', 'rules', 'guide', 'notes', 'compare', 'login', 'forgot', 'reset', 'create', 'home', 'options', 'campaigns', 'createcampaign', 'joincampaign', 'campaign', 'spawn', 'maps', 'mapedit', 'mapview', 'characters', 'sheet'];
-  const LOGGED_IN_ONLY = ['notes', 'compare', 'home', 'options', 'campaigns', 'createcampaign', 'joincampaign', 'campaign', 'spawn', 'maps', 'mapedit', 'mapview', 'characters', 'sheet'];
+  const SCREENS = ['loading', 'start', 'rules', 'guide', 'notes', 'compare', 'compendiums', 'login', 'forgot', 'reset', 'create', 'home', 'options', 'campaigns', 'createcampaign', 'joincampaign', 'campaign', 'spawn', 'maps', 'mapedit', 'mapview', 'characters', 'sheet'];
+  const LOGGED_IN_ONLY = ['notes', 'compare', 'compendiums', 'home', 'options', 'campaigns', 'createcampaign', 'joincampaign', 'campaign', 'spawn', 'maps', 'mapedit', 'mapview', 'characters', 'sheet'];
   const ROUTE_SCREEN = { 'campaigns': 'campaigns', 'create-campaign': 'createcampaign', 'join-campaign': 'joincampaign' };
 
   const loginUser = $('loginUser'), loginPass = $('loginPass'), loginBtn = $('loginBtn'), loginMsg = $('loginMsg');
@@ -214,8 +214,10 @@
     try { raw = decodeURIComponent(raw); } catch (e) { /* keep raw */ }
     raw = raw || 'start';
 
-    let name = raw, charId = null, campaignId = null, spawnSheetFor = null;
+    let name = raw, charId = null, campaignId = null, spawnSheetFor = null, bookId = null, mobCid = null;
     if (raw.startsWith('character-')) { name = 'sheet'; charId = raw.slice('character-'.length); }
+    else if (raw.startsWith('compendium-')) { name = 'sheet'; bookId = raw.slice('compendium-'.length); }
+    else if (raw.startsWith('compmob-')) { name = 'sheet'; [bookId, mobCid] = raw.slice('compmob-'.length).split('~'); }
     else if (raw.startsWith('campaign-')) { name = 'campaign'; campaignId = raw.slice('campaign-'.length); }
     else if (raw.startsWith('spawn-')) { name = 'spawn'; campaignId = raw.slice('spawn-'.length); }
     else if (raw.startsWith('maps-')) { name = 'maps'; mapCid = raw.slice(5); }
@@ -224,7 +226,7 @@
     else if (raw.startsWith('mapview-')) { name = 'mapview'; [mapCid, mapViewId] = raw.slice(8).split('~'); }
     else if (raw.startsWith('spawnsheet-')) { name = 'sheet'; spawnSheetFor = raw.slice('spawnsheet-'.length); }
     else if (Object.prototype.hasOwnProperty.call(ROUTE_SCREEN, raw)) name = ROUTE_SCREEN[raw];
-    const known = ['start', 'rules', 'guide', 'notes', 'compare', 'login', 'forgot', 'reset', 'create', 'home', 'options', 'campaigns', 'createcampaign', 'joincampaign', 'campaign', 'spawn', 'maps', 'mapedit', 'mapview', 'characters', 'sheet'].includes(name);
+    const known = ['start', 'rules', 'guide', 'notes', 'compare', 'compendiums', 'login', 'forgot', 'reset', 'create', 'home', 'options', 'campaigns', 'createcampaign', 'joincampaign', 'campaign', 'spawn', 'maps', 'mapedit', 'mapview', 'characters', 'sheet'].includes(name);
     if (!known) name = 'start';
 
     const user = state.user;
@@ -234,8 +236,21 @@
     if (user && !loggedInOnly && !titleWhileIn && name !== 'rules' && name !== 'guide' && name !== 'reset') { name = 'home'; history.replaceState(null, '', '#home'); }
     if (!user && loggedInOnly) { name = 'start'; history.replaceState(null, '', homeUrl()); }
 
-    let ch = null, viewOnly = null;
-    if (name === 'sheet' && spawnSheetFor) {   // the character being spawned, as it stands: look only
+    let ch = null, viewOnly = null, book = null;
+    if (bookPend) flushBook();
+    if (name === 'sheet' && bookId && user) {   // a compendium, or one of its mobs, opens on the sheet screen
+      if (compFor !== user.id) {   // not loaded yet: wait on the loading screen, then come back here
+        SCREENS.forEach((s) => { $('screen-' + s).hidden = s !== 'loading'; });
+        ensureComps().then(() => route());
+        return;
+      }
+      const b = compList.find((x) => x.id === bookId), m = b && mobCid ? b.data.mobs.find((x) => x.cid === mobCid) : null;
+      if (!b) { name = 'compendiums'; history.replaceState(null, '', '#compendiums'); }
+      else if (mobCid && !m) { history.replaceState(null, '', '#compendium-' + b.id); ch = bookChar(b); book = { comp: b, mob: null }; }
+      else if (m) { ch = m.ch; book = { comp: b, mob: m }; }
+      else { ch = bookChar(b); book = { comp: b, mob: null }; }
+      if (book && !b.mine) viewOnly = { owner: '', book: true };
+    } else if (name === 'sheet' && spawnSheetFor) {   // the character being spawned, as it stands: look only
       const g = state.campaigns.find((x) => x.id === spawnSheetFor);
       if (g && g.spawn && myMembership(g)) { ch = buildSpawnChar(g.spawn, g.id); viewOnly = { owner: '', draft: true }; }
       else { name = 'campaign'; campaignId = spawnSheetFor; history.replaceState(null, '', '#campaign-' + spawnSheetFor); }
@@ -259,12 +274,14 @@
       lastRoute = location.hash.replace('#', '') || 'start';
       // where a sheet's BACK goes: the campaign page if that is where you came from (kept while you stay on the sheet)
       if (screen === 'sheet') { if (/^campaign-/.test(prev)) sheetBack = prev; else if (!/^character-/.test(prev)) sheetBack = null; }
+      if (book && !book.mob && !/^comp(endium|mob)-/.test(prev)) bookBack = /^campaign-/.test(prev) ? prev : 'compendiums';
     }
     const onDoc = screen === 'rules' || screen === 'guide' || screen === 'notes';   // the rulebook, the user guide and the notes share one look
     document.documentElement.classList.toggle('on-rules', onDoc); document.body.classList.toggle('on-rules', onDoc);
+    // RULES, GUIDE and NOTES sit together at the top of every screen (each hidden on its own page; NOTES needs a login)
     $('rulesBtn').hidden = screen === 'rules';
-    $('notesBtn').hidden = !user || !onDoc || screen === 'notes';   // on the rulebook and the guide, NOTES sits where LOG OUT is elsewhere
-    $('guideBtn').hidden = screen !== 'rules';   // on the rulebook, GUIDE sits where RULES is everywhere else
+    $('guideBtn').hidden = screen === 'guide';
+    $('notesBtn').hidden = !user || screen === 'notes';
     logoutBtn.hidden = !user || screen === 'start' || onDoc;   // the title screen has its own LOG OUT
     document.querySelectorAll('#screen-start [data-auth]').forEach((b) => { b.hidden = (b.dataset.auth === 'in') !== !!user; });
 
@@ -279,10 +296,20 @@
     if (screen === 'home') $('welcomeName').textContent = user.name;
     if (screen === 'characters') { renderCharList(); refreshChars(); refreshCampaigns(); }
     if (screen === 'sheet') {
-      openSheet(ch, viewOnly);
-      $('screen-sheet').querySelector('.corner').dataset.go = viewOnly && viewOnly.draft ? 'spawn-' + ch.campaignId : viewOnly && ch.campaignId ? 'campaign-' + ch.campaignId : sheetBack || 'characters';
+      openSheet(ch, viewOnly, book);
+      $('screen-sheet').querySelector('.corner').dataset.go = book ? (book.mob ? 'compendium-' + book.comp.id : bookBack)
+        : viewOnly && viewOnly.draft ? 'spawn-' + ch.campaignId : viewOnly && ch.campaignId ? 'campaign-' + ch.campaignId : sheetBack || 'characters';
+      $('exportBtn').hidden = !!(book && book.mob);
+      $('exportBtn').textContent = book ? 'EXPORT COMPENDIUM' : 'EXPORT SHEET';
+      if (!book && hasRefs(ch)) ensureComps().then(() => {   // UPDATE FROM COMPENDIUM buttons need the compendiums
+        if (!cur || cur.ch !== ch || cur.book) return;
+        rebuild('items'); rebuild('abilities');
+        if (cur.mobRefBox) cur.mobRefBox.replaceChildren(...mobRefFields());
+        if (cur.viewOnly) { if (!cur.qmItems) lockPanel(cur.panels.items); lockPanel(cur.panels.info); }
+      });
       refreshCampaigns();
     }
+    if (screen === 'compendiums') { renderCompList(''); ensureComps(true).then(() => { if (!$('screen-compendiums').hidden) renderCompList(); }); }
     if (screen === 'createcampaign') { $('campaignName').value = ''; $('campaignFormMsg').textContent = ''; $('campaignBtn').disabled = true; }
     if (screen === 'options') renderOptions();
     if (screen === 'rules') renderRules();
@@ -770,7 +797,7 @@
           go('character-' + c.id);
         } catch (e) { setCampaignMsgs(e.message); }
       } }));
-      npcBar.append(spawnButton(g), mobButton(g), giveEtButton(g), h('button', { class: 'btn small', type: 'button', id: 'dmgBtn', text: 'ROLL DAMAGE', onclick: () => damageCard(g) }));
+      npcBar.append(spawnButton(g), mobButton(g), compButton(g), giveEtButton(g), h('button', { class: 'btn small', type: 'button', id: 'dmgBtn', text: 'ROLL DAMAGE', onclick: () => damageCard(g) }));
     }
     npcBar.append(codexButton(g));
     codexSync(g).catch(() => { /* best effort */ });
@@ -2975,7 +3002,7 @@
   function sheetForExport(c) {
     const o = { info: c.info, vitals: c.vitals };
     ['talents', 'totemTalents', 'buffTalents', 'prof', 'totemProf', 'skillBuff', 'skillAdj', 'skillAdjPct', 'statBuff', 'statAdj', 'statAdjPct',
-      'items', 'abilities', 'customActions', 'appearance', 'backstory', 'motivation', 'tokenImage'].forEach((k) => { if (c[k] != null) o[k] = c[k]; });
+      'items', 'abilities', 'attacks', 'customActions', 'appearance', 'backstory', 'motivation', 'tokenImage'].forEach((k) => { if (c[k] != null) o[k] = c[k]; });
     return { format: IMPORT_FORMAT, version: 1, exported: new Date().toISOString(), character: JSON.parse(JSON.stringify(o)) };
   }
   function exportFileName(c) {
@@ -3002,22 +3029,27 @@
     c.talents = nums(raw.talents, 9, BSH.DEFAULT_TALENT);
     [['totemTalents', 9], ['buffTalents', 9], ['prof', 36], ['totemProf', 36], ['skillBuff', 36], ['skillAdj', 36], ['skillAdjPct', 36],
       ['statBuff', 12], ['statAdj', 12], ['statAdjPct', 12]].forEach(([k, n]) => { c[k] = nums(raw[k], n, null); });
-    c.items = (Array.isArray(raw.items) ? raw.items : []).slice(0, 300).filter((it) => it && typeof it === 'object').map((it) => {
-      const o = { name: str(it.name, 100), qty: num(it.qty) === null ? 1 : num(it.qty), charges: null, desc: str(it.desc, 2000),
-        wearable: !!it.wearable, weapon: !!it.weapon, magic: !!it.magic, buffs: cleanBuffs(it.buffs),
-        weaponProps: it.weapon ? cleanWeapon(it.weaponProps) : {}, magicProps: cleanMagic(it.magic ? it.magicProps : {}) };
-      o.eqL = !!it.eqL; o.eqR = !!it.eqR; o.eqB = !!it.eqB;
-      if (o.eqB) { o.eqL = false; o.eqR = false; }
-      o.charges = o.magic && num(it.charges) !== null ? num(it.charges) : null; o.charges = clampCharges(Object.assign({}, o, { charges: o.charges }));
-      if (o.weapon) { o.attacks = attacksFor(o.name, it.attacks, it.weaponProps); if (typeof it.twoHanded === 'boolean') o.twoHanded = it.twoHanded; o.loaded = it.loaded === true; fixWeapon(o); }
-      return o;
-    });
-    c.abilities = (Array.isArray(raw.abilities) ? raw.abilities : []).slice(0, 100).filter((a) => a && typeof a === 'object').map((a) => ({ name: str(a.name, 100), desc: str(a.desc, 3000) }));
+    c.items = (Array.isArray(raw.items) ? raw.items : []).slice(0, 300).filter((it) => it && typeof it === 'object').map(sanitizeItem);
+    c.abilities = (Array.isArray(raw.abilities) ? raw.abilities : []).slice(0, 100).filter((a) => a && typeof a === 'object').map((a) => withRef({ name: str(a.name, 100), desc: str(a.desc, 3000) }, a));
     c.attacks = Array.isArray(raw.attacks) ? cleanAttacks(raw.attacks) : [unarmedStrike()];
-    c.customActions = (Array.isArray(raw.customActions) ? raw.customActions : []).slice(0, 50).filter((a) => a && typeof a === 'object').map((a) => ({ name: str(a.name, 60), cost: str(a.cost, 20), desc: str(a.desc, 3000) }));
+    c.customActions = (Array.isArray(raw.customActions) ? raw.customActions : []).slice(0, 50).filter((a) => a && typeof a === 'object').map((a) => withRef({ name: str(a.name, 60), cost: str(a.cost, 20), desc: str(a.desc, 3000) }, a));
     c.appearance = str(raw.appearance, 10000); c.backstory = str(raw.backstory, 10000); c.motivation = str(raw.motivation, 10000);
     if (typeof raw.tokenImage === 'string' && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(raw.tokenImage) && raw.tokenImage.length <= 100000) c.tokenImage = raw.tokenImage;
     return c;
+  }
+  const withRef = (o, src) => { const r = cleanRef(src && src.cref); if (r) o.cref = r; return o; };
+  // One item from a file (a sheet or a compendium), rebuilt field by field
+  function sanitizeItem(it) {
+    const str = (v, n) => (v == null ? '' : String(v).slice(0, n));
+    const num = (v) => (v === null || v === undefined || v === '' || typeof v === 'object' || !Number.isFinite(Number(v)) ? null : Number(v));
+    const o = { name: str(it.name, 100), qty: num(it.qty) === null ? 1 : num(it.qty), charges: null, desc: str(it.desc, 2000),
+      wearable: !!it.wearable, weapon: !!it.weapon, magic: !!it.magic, buffs: cleanBuffs(it.buffs),
+      weaponProps: it.weapon ? cleanWeapon(it.weaponProps) : {}, magicProps: cleanMagic(it.magic ? it.magicProps : {}) };
+    o.eqL = !!it.eqL; o.eqR = !!it.eqR; o.eqB = !!it.eqB;
+    if (o.eqB) { o.eqL = false; o.eqR = false; }
+    o.charges = o.magic && num(it.charges) !== null ? num(it.charges) : null; o.charges = clampCharges(Object.assign({}, o, { charges: o.charges }));
+    if (o.weapon) { o.attacks = attacksFor(o.name, it.attacks, it.weaponProps); if (typeof it.twoHanded === 'boolean') o.twoHanded = it.twoHanded; o.loaded = it.loaded === true; fixWeapon(o); }
+    return withRef(o, it);
   }
   function importCharacterText(text) {
     let data;
@@ -3029,6 +3061,7 @@
     return c;
   }
   $('exportBtn').addEventListener('click', () => {
+    if (cur && cur.book) { try { bookFix(cur.book.comp); exportBook(cur.book.comp); } catch (e) { setStatus('Could not make the file.'); } return; }
     if (cur && cur.ch) { try { downloadText(exportFileName(cur.ch), JSON.stringify(sheetForExport(cur.ch), null, 2)); } catch (e) { $('saveStatus').textContent = 'Could not make the file.'; } }
   });
   $('importCharBtn').addEventListener('click', () => $('importFile').click());
@@ -3185,13 +3218,543 @@
     rd.readAsText(f);
   }
 
+  /* ================= Compendiums ================= */
+  // A player's own library: items, mobs, abilities, attacks and custom actions, made once and copied onto sheets.
+  // data = { v: 1, items: [item + cid], mobs: [mob], abilities: [{cid, name, desc}], attacks: [attack + cid], customActions: [{cid, name, cost, desc}] }
+  // mob  = { cid, kind: 'mob'|'boss', ch: character template (its name is the mob's name; no items), var: { prof: [36 ranges], talents: [9 ranges], statPct },
+  //          drops: [{ e: item cid, chance: 0-100, min, max }] }
+  // A copy carries cref = { c: compendium id, e: entry cid } (a mob NPC in info.cref), so UPDATE can bring it up to date.
+  const COMP_FORMAT = 'bloodsoup-hell-compendium';
+  const BOOK_KINDS = { items: 500, mobs: 200, abilities: 300, attacks: 300, customActions: 300 };   // the most of each
+  let compList = [], compFor = null, compLoading = null, compErr = '';
+  let bookPend = null, bookTimer = null, bookBack = 'compendiums';
+
+  const okCid = (x) => typeof x === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(x);
+  const clampNum = (v, lo, hi, d) => { if (v === '' || v == null || typeof v === 'object') return d; const n = Number(v); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d; };
+  const rangeOf = (v) => { const n = Math.floor(clampNum(v, 0, 100, 0)); return n > 0 ? n : null; };
+  function cleanMob(m) {
+    m = m && typeof m === 'object' ? m : {};
+    const ch = sanitizeImport(m.ch && typeof m.ch === 'object' ? m.ch : {});
+    ch.items = [];
+    ch.info.name = String(ch.info.name || '').trim().slice(0, 50) || 'Unnamed mob';
+    const v = m.var && typeof m.var === 'object' ? m.var : {};
+    const arrOf = (a, n) => Array.from({ length: n }, (_, i) => rangeOf(Array.isArray(a) ? a[i] : null));
+    return { cid: okCid(m.cid) ? m.cid : uuid(), kind: m.kind === 'boss' ? 'boss' : 'mob', ch,
+      var: { prof: arrOf(v.prof, 36), talents: arrOf(v.talents, 9), statPct: Math.floor(clampNum(v.statPct, 0, 50, 0)) },
+      drops: (Array.isArray(m.drops) ? m.drops : []).filter((d) => d && typeof d === 'object').slice(0, 50).map((d) => {
+        const min = Math.floor(clampNum(d.min, 0, 9999, 1));
+        return { e: okCid(d.e) ? d.e : '', chance: clampNum(d.chance, 0, 100, 100), min, max: Math.max(min, Math.floor(clampNum(d.max, 0, 9999, min))) };
+      }) };
+  }
+  // Rebuilds a compendium's data field by field (on import, and whenever it is loaded), so nothing odd ends up in it
+  function cleanBook(raw) {
+    const d = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+    const str = (v, n) => (v == null ? '' : String(v).slice(0, n));
+    const seen = new Set(), list = (k) => (Array.isArray(d[k]) ? d[k] : []).filter((x) => x && typeof x === 'object').slice(0, BOOK_KINDS[k]);
+    const id = (o, src) => { o.cid = okCid(src.cid) && !seen.has(src.cid) ? src.cid : uuid(); seen.add(o.cid); return o; };
+    return {
+      v: 1,
+      items: list('items').map((it) => { const o = id(sanitizeItem(it), it); delete o.cref; o.eqL = o.eqR = o.eqB = false; delete o.uid; delete o.loaded; return o; }),
+      mobs: list('mobs').map((m) => { const o = cleanMob(m); const want = o.cid; o.cid = seen.has(want) ? uuid() : want; seen.add(o.cid); return o; }),
+      abilities: list('abilities').map((a) => id({ name: str(a.name, 100), desc: str(a.desc, 3000) }, a)),
+      attacks: list('attacks').map((a) => { const o = cleanAttack(a); delete o.cref; return id(o, a); }),
+      customActions: list('customActions').map((a) => id({ name: str(a.name, 60), cost: str(a.cost, 20), desc: str(a.desc, 3000) }, a))
+    };
+  }
+  const bookCounts = (d) => [[d.items, 'item'], [d.mobs, 'mob'], [d.abilities, 'ability'], [d.attacks, 'attack'], [d.customActions, 'custom action']]
+    .map(([l, w]) => l.length + ' ' + (l.length === 1 ? w : w === 'ability' ? 'abilities' : w + 's')).join(' · ');
+  const mobLabel = (m) => (m.ch.info.name || 'Unnamed mob') + (m.kind === 'boss' ? ' (boss)' : '');
+
+  // Your compendiums, plus the ones used by campaigns where you are QM (read only). Loaded once per account, again on request.
+  function ensureComps(force) {
+    if (!state.user) return Promise.resolve([]);
+    if (compFor === state.user.id && !force) return Promise.resolve(compList);
+    if (compLoading) return compLoading;
+    const who = state.user.id;
+    compLoading = backend.listCompendiums().then((list) => {
+      if (!state.user || state.user.id !== who) return compList;
+      const open = cur && cur.book ? cur.book.comp : null;
+      compList = list.map((b) => (open && open.id === b.id && (b.mine || bookPend === open) ? open
+        : bookPend && bookPend.id === b.id ? bookPend : Object.assign(b, { data: cleanBook(b.data) })));
+      compErr = ''; return compList;
+    }, (e) => { if (compFor !== who) compList = []; compErr = e.message; return compList; })
+      .then((l) => { compFor = who; compLoading = null; return l; });
+    return compLoading;
+  }
+  // Gives new entries an id and keeps item hand marks off, then saves (half a second after the last change)
+  function bookFix(comp) {
+    const d = comp.data;
+    Object.keys(BOOK_KINDS).forEach((k) => { (d[k] || []).forEach((x) => { if (!okCid(x.cid)) x.cid = uuid(); }); });
+    d.items.forEach((it) => { it.eqL = it.eqR = it.eqB = false; });
+    if (cur && cur.book && cur.book.comp === comp && !cur.book.mob) { const n = String(cur.ch.info.name || '').trim().slice(0, 60); if (n) comp.name = n; }
+  }
+  function queueBookSave(comp) {
+    bookFix(comp);
+    bookPend = comp; setStatus('Saving...');
+    clearTimeout(bookTimer); bookTimer = setTimeout(flushBook, 600);
+  }
+  async function flushBook() {
+    clearTimeout(bookTimer); bookTimer = null;
+    const comp = bookPend; if (!comp) return;
+    bookPend = null;
+    const mine = () => cur && cur.book && cur.book.comp === comp;
+    try {
+      await backend.saveCompendium({ id: comp.id, name: comp.name, data: JSON.parse(JSON.stringify(comp.data)) });
+      if (!bookPend && mine()) setStatus('Saved');
+    } catch (e) {
+      if (!bookPend) bookPend = comp;
+      if (mine()) setStatus('Not saved: ' + e.message);
+      if (!/too big|name/i.test(e.message) && !bookTimer) bookTimer = setTimeout(flushBook, 5000);
+    }
+  }
+
+  // A number box for a range or a drop: blank allowed, kept between lo and hi
+  function numBox(get, set, label, lo, hi, ph) {
+    const el = h('input', { type: 'number', class: 'num', step: '1', min: String(lo), max: String(hi), placeholder: ph, 'aria-label': label });
+    const v = get(); el.value = v == null ? '' : v;
+    el.addEventListener('input', () => {
+      const n = Number(el.value);
+      set(el.value === '' || !Number.isFinite(n) ? null : Math.min(hi, Math.max(lo, Math.floor(n))));
+      touch();
+    });
+    return el;
+  }
+  const rangeIn = (get, set, label) => numBox(get, (v) => set(v ? v : null), label, 0, 100, '0');
+
+  /* ----- making copies ----- */
+  const plain = (o) => { const c = JSON.parse(JSON.stringify(o)); delete c.cid; return c; };
+  function copyFrom(kind, e, compId) {
+    const ref = { c: compId, e: e.cid };
+    if (kind === 'items') { const it = plain(e); delete it.uid; it.eqL = it.eqR = it.eqB = false; it.loaded = false; it.cref = ref; return fixWeapon(it); }
+    if (kind === 'attacks') return cleanAttack(Object.assign(plain(e), { cref: ref }));
+    if (kind === 'abilities') return { name: e.name || '', desc: e.desc || '', cref: ref };
+    return { name: e.name || '', cost: e.cost || '', desc: e.desc || '', cref: ref };
+  }
+  // UPDATE: the entry's latest version, in place (an item keeps its quantity, charges, hands, loaded mark and id)
+  function updateFrom(kind, obj, e, compId) {
+    const fresh = copyFrom(kind, e, compId);
+    if (kind === 'items') {
+      ['qty', 'charges', 'eqL', 'eqR', 'eqB', 'loaded', 'uid'].forEach((k) => { if (obj[k] !== undefined) fresh[k] = obj[k]; });
+      if (!fresh.wearable) fresh.eqB = false;
+      fresh.charges = clampCharges(fresh);
+    }
+    Object.keys(obj).forEach((k) => { delete obj[k]; });
+    Object.assign(obj, fresh);
+  }
+  function refEntry(kind, obj) {
+    const r = cleanRef(obj && obj.cref); if (!r) return null;
+    const b = compList.find((x) => x.id === r.c), e = b && (b.data[kind] || []).find((x) => x.cid === r.e);
+    return e ? { book: b, e } : null;
+  }
+  function updateBtn(kind, obj, tab) {
+    if (cur.book) return null;
+    const hit = refEntry(kind, obj); if (!hit) return null;
+    return h('button', { class: 'btn small', type: 'button', 'data-update': kind, text: 'UPDATE FROM COMPENDIUM', title: 'From ' + hit.book.name,
+      'aria-label': 'Update ' + (obj.name || '') + ' from the compendium ' + hit.book.name, onclick: () => {
+        const now = refEntry(kind, obj); if (!now) return;
+        updateFrom(kind, obj, now.e, now.book.id); touch(); rebuild(tab);
+      } });
+  }
+  const updateRow = (kind, obj, tab) => { const b = updateBtn(kind, obj, tab); return b ? h('div', { class: 'iact' }, b) : null; };
+  const hasRefs = (c) => !!(c && ((c.info && c.info.cref) || ['items', 'abilities', 'attacks', 'customActions'].some((k) => (c[k] || []).some((x) => x && x.cref))));
+
+  // One copy of a compendium mob: its talents and proficiencies moved within their ranges, its combat stats by the variation %, its drops rolled
+  function rollMob(d, mob, name, compId) {
+    const c = normalizeChar(JSON.parse(JSON.stringify(mob.ch)));
+    ['campaignId', 'isNpc', 'npcVisible', 'sheetHidden', 'owner', 'ownerId'].forEach((k) => { delete c[k]; });
+    c.id = uuid(); c.created = c.updated = Date.now();
+    const base = String(mob.ch.info.name || '').trim() || 'Mob';
+    c.info = Object.assign({}, c.info, { name, kind: mob.kind, mobBase: base, alive: true, cref: { c: compId, e: mob.cid } });
+    c.vitals = Object.assign({}, c.vitals, { damage: null, tempHp: null, apRemaining: null, spRemaining: null, epRemaining: null });
+    ['bt', 'wt', 'bleeding', 'restCd', 'turnMark', 'nextCrit', 'apPenalty'].forEach((k) => { delete c.vitals[k]; });
+    const spread = (v, r) => (r > 0 ? v + rollDie(2 * r + 1) - r - 1 : v);
+    c.prof = Array.from({ length: 36 }, (_, i) => { const v = c.prof && c.prof[i], r = mob.var.prof[i]; return r ? Math.max(0, spread(Number(v) || 0, r)) : v == null ? null : v; });
+    c.talents = Array.from({ length: 9 }, (_, i) => { const v = c.talents && c.talents[i], r = mob.var.talents[i]; return r ? Math.max(0, spread(v == null || v === '' ? BSH.DEFAULT_TALENT : Number(v) || 0, r)) : v; });
+    const vary = mob.var.statPct || 0;
+    c.statAdjPct = Array.from({ length: 12 }, (_, i) => Number(c.statAdjPct && c.statAdjPct[i]) || 0);
+    if (vary > 0) BSH.STATS.forEach((st, i) => { if (MOB_STATS.includes(st.key)) c.statAdjPct[i] = r2(c.statAdjPct[i] + rollDie(2 * vary + 1) - vary - 1); });
+    c.items = rollDrops(d, mob, compId);
+    return c;
+  }
+  function rollDrops(d, mob, compId) {
+    const out = [];
+    mob.drops.forEach((dr) => {
+      const src = d.items.find((x) => x.cid === dr.e);
+      if (!src || !(Math.random() * 100 < dr.chance)) return;
+      const lo = Math.min(dr.min, dr.max), hi = Math.max(dr.min, dr.max), q = lo + Math.floor(Math.random() * (hi - lo + 1));
+      if (q < 1) return;
+      const same = out.find((x) => x.cref && x.cref.e === src.cid);
+      if (same) { same.qty = effQty(same) + q; return; }
+      const it = copyFrom('items', src, compId); it.qty = q; it.charges = clampCharges(Object.assign({}, it, { charges: it.magic ? maxOf(it) : null }));
+      out.push(it);
+    });
+    return out;
+  }
+  // Next free number for copies of a mob ("Goblin 1", "Goblin 2", ...), counting every character in the campaign
+  function nextMobNumber(campChars, base) {
+    const re = new RegExp('^' + base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ' (\\d+)$', 'i');
+    return 1 + campChars.reduce((mx, r) => { const m = re.exec(String((r.ch && r.ch.info && r.ch.info.name) || '').trim()); return m ? Math.max(mx, Number(m[1])) : mx; }, 0);
+  }
+  const giftOf = (it, n) => ({ name: String(it.name || '').trim(), qty: n, charges: clampCharges(it), desc: it.desc || '',
+    wearable: !!it.wearable, weapon: !!it.weapon, magic: !!it.magic, buffs: cleanBuffs(it.buffs), weaponProps: it.weapon ? cleanWeapon(it.weaponProps) : {},
+    attacks: it.weapon ? cleanAttacks(it.attacks) : [], twoHanded: !!(it.weapon && it.twoHanded), magicProps: it.magic ? cleanMagic(it.magicProps) : {}, cref: cleanRef(it.cref) });
+
+  // A mob NPC's INFO tab: where it came from, and UPDATE (new stats from the compendium, ranges rolled again; keeps name, damage, tokens, items)
+  function mobRefFields() {
+    const r = cleanRef(cur.ch.info && cur.ch.info.cref); if (!r) return [];
+    const b = compList.find((x) => x.id === r.c), m = b && b.data.mobs.find((x) => x.cid === r.e);
+    return [sec('Compendium'),
+      h('p', { class: 'note', style: 'text-align:left', id: 'mobRefText', text: m ? 'Made from ' + mobLabel(m) + ' in the compendium ' + b.name + '.' : compFor ? 'Made from a compendium mob that is gone or that you cannot see.' : 'Made from a compendium mob.' }),
+      m && !cur.viewOnly ? confirmButton('UPDATE FROM COMPENDIUM', 'TAP AGAIN TO UPDATE', () => applyMobUpdate(cur.ch, b, m)) : null,
+      m && !cur.viewOnly ? h('p', { class: 'hint', text: "Takes the mob's current talents, skills, stats, abilities, attacks and story, rolling its ranges again. Keeps this one's name, damage, tokens and items." }) : null].filter(Boolean);
+  }
+  const SHEET_PARTS = ['talents', 'totemTalents', 'buffTalents', 'prof', 'totemProf', 'skillBuff', 'skillAdj', 'skillAdjPct', 'statBuff', 'statAdj', 'statAdjPct',
+    'abilities', 'attacks', 'customActions', 'appearance', 'backstory', 'motivation'];
+  function applyMobUpdate(c, b, m) {
+    const fresh = rollMob(b.data, m, c.info.name, b.id);
+    SHEET_PARTS.forEach((k) => { c[k] = fresh[k]; });
+    if (fresh.tokenImage) c.tokenImage = fresh.tokenImage;
+    const keep = {}; ['name', 'alive', 'incarnation', 'totemTokens', 'explodeTokens', 'legacyTokens', 'spiritualGuidance', 'money'].forEach((k) => { keep[k] = c.info[k]; });
+    c.info = Object.assign({}, fresh.info, keep);
+    const tab = 'info', vo = cur.viewOnly;
+    touch(); openSheet(c, vo); showTab(tab);
+    setStatus('Updated from ' + b.name + '. Saving...');
+  }
+
+  // FROM COMPENDIUM on a sheet: your compendiums, plus the one used by this character's campaign if you are its QM
+  async function compPicker(kinds) {
+    const ch = cur.ch, close = () => { $('etModal').hidden = true; $('etBody').replaceChildren(); };
+    $('etTitle').textContent = 'Add from a compendium';
+    $('etBody').replaceChildren(h('p', { class: 'note', text: 'Loading...' }));
+    $('etModal').hidden = false; $('etTitle').focus({ preventScroll: true });
+    await ensureComps(true);
+    if (!cur || cur.ch !== ch) { close(); return; }
+    const books = compList.filter((b) => b.mine || (ch.campaignId && state.campaigns.some((g) => g.id === ch.campaignId && g.compendiumId === b.id && iAmQm(g))));
+    const closeBtn = h('button', { class: 'btn small', type: 'button', id: 'etCancel', text: 'CLOSE', onclick: close });
+    if (!books.length) {
+      $('etBody').replaceChildren(h('p', { class: 'note', text: compErr || 'You have no compendiums yet. Make one with COMPENDIUM on the home screen.' }), closeBtn);
+      return;
+    }
+    const bookSel = h('select', { id: 'cpBook', 'aria-label': 'Compendium' }, books.map((b) => h('option', { value: b.id, text: b.name + (b.mine ? '' : ' (campaign)') })));
+    const kindSel = h('select', { id: 'cpKind', 'aria-label': 'What to add' }, kinds.map(([k, label]) => h('option', { value: k, text: label })));
+    const entSel = h('select', { id: 'cpEntry', 'aria-label': 'Which one' });
+    const qty = h('input', { type: 'number', id: 'cpQty', class: 'num', min: '1', max: '9999', step: '1', 'aria-label': 'How many' });
+    const qtyFld = h('label', { class: 'fld' }, h('span', { class: 'lbl', text: 'How many' }), qty);
+    const msg = h('p', { class: 'skill-out', role: 'status', id: 'cpMsg' });
+    const pick = () => { const b = books.find((x) => x.id === bookSel.value); return b ? { b, list: b.data[kindSel.value] || [] } : null; };
+    const fill = () => {
+      const p = pick(), list = p ? p.list : [];
+      entSel.replaceChildren(...(list.length ? list.map((e) => h('option', { value: e.cid, text: String(e.name || '').trim() || 'Unnamed' }))
+        : [h('option', { value: '', text: 'Nothing of that kind in it yet' })]));
+      qtyFld.hidden = kindSel.value !== 'items'; syncQty();
+    };
+    const syncQty = () => { const p = pick(), e = p && p.list.find((x) => x.cid === entSel.value); qty.value = e && kindSel.value === 'items' ? String(effQty(e) || 1) : '1'; };
+    bookSel.addEventListener('change', fill); kindSel.addEventListener('change', fill); entSel.addEventListener('change', syncQty);
+    const add = h('button', { class: 'btn', type: 'button', id: 'cpAdd', text: 'ADD', onclick: () => {
+      const p = pick(), e = p && p.list.find((x) => x.cid === entSel.value), kind = kindSel.value;
+      if (!e) { msg.textContent = 'Pick something to add.'; return; }
+      if (!cur || cur.ch !== ch) { close(); return; }
+      const copy = copyFrom(kind, e, p.b.id);
+      if (kind === 'items') {
+        const n = Math.floor(Number(qty.value));
+        if (!(n >= 1 && n <= 9999)) { msg.textContent = 'How many is 1 to 9999.'; return; }
+        copy.qty = n; ch.items.push(copy); touch(); rebuild('items');
+      } else {
+        if (kind === 'attacks' && !Array.isArray(ch.attacks)) ch.attacks = [];
+        if (kind === 'customActions' && !Array.isArray(ch.customActions)) ch.customActions = [];
+        ch[kind].push(copy); touch(); rebuild('abilities');
+      }
+      msg.textContent = 'Added ' + (String(copy.name || '').trim() || 'it') + '.';
+    } });
+    fill();
+    $('etBody').replaceChildren(
+      h('p', { class: 'note', text: 'Adds a copy that keeps a link to the compendium: its UPDATE FROM COMPENDIUM button takes the latest version later.' }),
+      h('label', { class: 'fld' }, h('span', { class: 'lbl', text: 'Compendium' }), bookSel),
+      kinds.length > 1 ? h('label', { class: 'fld' }, h('span', { class: 'lbl', text: 'Kind' }), kindSel) : null,
+      h('label', { class: 'fld' }, h('span', { class: 'lbl', text: 'Which one' }), entSel), qtyFld, add, msg, closeBtn);
+  }
+
+  /* ----- the compendium editor (on the sheet screen) ----- */
+  // The book's INFO tab: name, what is in it, delete
+  function panelBookInfo() {
+    const b = cur.book.comp, using = state.campaigns.filter((g) => g.compendiumId === b.id).map((g) => g.name);
+    return [
+      sec('Compendium'),
+      h('div', { class: 'grid2' }, field('Name', txtIn('info.name', 'Compendium name', 60), 'span2')),
+      out('bookCounts', 'note left book-counts', 'p'),
+      h('p', { class: 'hint', text: 'Make things here once, then add copies of them: FROM COMPENDIUM on a sheet\'s ITEMS and ABILITIES tabs. As a QM, choose this compendium for a campaign (COMPENDIUM on the campaign page) to add its mobs and give its items there; the players cannot see it. A copy keeps a link back here, and its UPDATE FROM COMPENDIUM button takes the latest version.' }),
+      using.length ? h('p', { class: 'note left', id: 'bookUsing', text: 'Used by: ' + using.join(', ') }) : null,
+      h('p', { class: 'hint', text: 'EXPORT COMPENDIUM saves it as a file; IMPORT COMPENDIUM (on the compendium list) brings a file back as a new compendium.' }),
+      cur.viewOnly ? null : h('div', { class: 'tools danger' }, confirmButton('DELETE COMPENDIUM', 'TAP AGAIN TO DELETE', async () => {
+        const id = b.id;
+        if (bookPend === b) { bookPend = null; clearTimeout(bookTimer); bookTimer = null; }
+        compList = compList.filter((x) => x.id !== id); state.campaigns.forEach((g) => { if (g.compendiumId === id) g.compendiumId = null; });
+        cur = null; go('compendiums');
+        try { await backend.deleteCompendium(id); } catch (e) { $('compMsg').textContent = e.message; ensureComps(true).then(renderCompList); }
+      }))
+    ].filter(Boolean);
+  }
+  // The book on the sheet screen: a blank sheet whose lists ARE the compendium's lists (so the ITEMS/ABILITIES editors work on them)
+  function bookChar(b) {
+    const c = BSH.blankCharacter();
+    c.id = 'book-' + b.id; c.info.name = b.name;
+    ['items', 'abilities', 'attacks', 'customActions'].forEach((k) => { c[k] = b.data[k]; });
+    return c;
+  }
+  function newMob(name) {
+    const ch = normalizeChar({ id: uuid() }); ch.info.name = name || 'New mob';
+    return cleanMob({ ch, kind: 'mob' });
+  }
+  function panelMobs() {
+    const b = cur.book.comp, d = b.data, ro = !!cur.viewOnly;
+    const STAT = (k) => BSH.STATS.findIndex((x) => x.key === k);
+    const rows = d.mobs.map((m, i) => {
+      const r = BSH.compute(m.ch), st = ['HP', 'AC', 'DA', 'SA', 'BP'].map((k) => k + ' ' + fmt(Math.round(r.stat[STAT(k)])));
+      return h('div', { class: 'item mob-entry' },
+        h('div', { class: 'mobrow' },
+          h('button', { class: 'btn char-btn mname', type: 'button', 'data-mob': m.cid, onclick: () => { flushBook(); go('compmob-' + b.id + '~' + m.cid); } },
+            h('span', { text: mobLabel(m) }), h('span', { class: 'sub', text: st.join('  ') + (m.drops.length ? ' · ' + m.drops.length + (m.drops.length === 1 ? ' drop' : ' drops') : '') })),
+          ro ? null : h('div', { class: 'mob-acts' },
+            h('button', { class: 'btn small', type: 'button', text: 'COPY', 'aria-label': 'Copy ' + mobLabel(m), onclick: () => {
+              if (d.mobs.length >= BOOK_KINDS.mobs) return;
+              const c = cleanMob(JSON.parse(JSON.stringify(m))); c.cid = uuid(); c.ch.info.name = (m.ch.info.name + ' copy').slice(0, 50);
+              d.mobs.splice(i + 1, 0, c); touch(); rebuild('mobs');
+            } }),
+            confirmButton('REMOVE', 'TAP AGAIN', () => { d.mobs.splice(d.mobs.indexOf(m), 1); touch(); rebuild('mobs'); }))));
+    });
+    // a mob from one of your characters or NPCs: its sheet as the template, its items as drops (always carried)
+    const own = state.chars.slice().sort((x, y) => (x.info.name || '').localeCompare(y.info.name || ''));
+    const fromSel = h('select', { id: 'mobFromChar', 'aria-label': 'Character to copy into a mob' }, h('option', { value: '', text: 'Copy one of your characters...' }),
+      ...own.map((c) => h('option', { value: c.id, text: (c.info.name || 'Unnamed character') + (c.isNpc ? ' (NPC)' : '') })));
+    const msg = h('p', { class: 'msg', role: 'status', id: 'mobsMsg' });
+    return [
+      sec('Mobs'),
+      h('p', { class: 'hint', text: 'Enemies and other NPCs to add to a campaign several at a time. Each one is a sheet; ranges on its TALENTS and SKILLS tabs make every copy a little different, and its DROPS tab says which items each copy may carry.' }),
+      h('div', {}, rows.length ? rows : [h('p', { class: 'note', text: 'No mobs yet.' })]),
+      ro ? null : h('button', { class: 'btn small', type: 'button', id: 'addMob', text: 'ADD MOB', onclick: () => {
+        if (d.mobs.length >= BOOK_KINDS.mobs) { msg.textContent = 'A compendium holds ' + BOOK_KINDS.mobs + ' mobs at most.'; return; }
+        const m = newMob(); d.mobs.push(m); touch(); flushBook(); go('compmob-' + b.id + '~' + m.cid);
+      } }),
+      ro || !own.length ? null : h('div', { class: 'row2' }, fromSel, h('button', { class: 'btn small', type: 'button', id: 'mobFromCharBtn', text: 'MAKE MOB', onclick: () => {
+        const c = own.find((x) => x.id === fromSel.value);
+        if (!c) { msg.textContent = 'Pick a character first.'; return; }
+        if (d.mobs.length >= BOOK_KINDS.mobs) { msg.textContent = 'A compendium holds ' + BOOK_KINDS.mobs + ' mobs at most.'; return; }
+        const m = cleanMob({ ch: JSON.parse(JSON.stringify(c)), kind: c.info.kind === 'boss' ? 'boss' : 'mob' });
+        m.ch.info.name = String(c.info.mobBase || c.info.name || '').trim().slice(0, 50) || 'New mob';
+        delete m.ch.info.kind; delete m.ch.info.mobBase; delete m.ch.info.cref;
+        (c.items || []).forEach((it) => {   // each item becomes a compendium item (reusing one of the same name) and a sure drop
+          if (!String(it.name || '').trim()) return;
+          let src = d.items.find((x) => sameName(x, it));
+          if (!src) { if (d.items.length >= BOOK_KINDS.items) return; src = Object.assign(sanitizeItem(it), { cid: uuid() }); delete src.cref; src.eqL = src.eqR = src.eqB = false; delete src.uid; delete src.loaded; d.items.push(src); }
+          const n = Math.max(1, Math.floor(effQty(it)) || 1);
+          if (m.drops.length < 50) m.drops.push({ e: src.cid, chance: 100, min: n, max: n });
+        });
+        d.mobs.push(m); touch(); rebuild('mobs'); rebuild('items');
+        msg.textContent = 'Made the mob ' + m.ch.info.name + '.';
+      } })),
+      msg
+    ].filter(Boolean);
+  }
+  // A mob's INFO tab: name, mob or boss, the stat variation, the usual description fields
+  function panelMobInfo() {
+    const m = cur.book.mob;
+    const kind = h('select', { id: 'mobKindSel', 'aria-label': 'Mob or boss' }, h('option', { value: 'mob', text: 'Mob' }), h('option', { value: 'boss', text: 'Boss' }));
+    kind.value = m.kind;
+    kind.addEventListener('change', () => { m.kind = kind.value === 'boss' ? 'boss' : 'mob'; touch(); });
+    return [
+      sec('Mob'),
+      h('p', { class: 'hint', text: 'A template. Each copy added to a campaign is named after it with a number (' + (m.ch.info.name || 'Goblin') + ' 1, ' + (m.ch.info.name || 'Goblin') + ' 2, ...) and starts hidden from the players. Ranges on the TALENTS and SKILLS tabs vary each copy; the DROPS tab is what it may carry.' }),
+      h('div', { class: 'grid2' },
+        field('Name', txtIn('info.name', 'Mob name', 50), 'span2'),
+        field('Kind', kind),
+        field('Stat variation % (HP, SP, RD, IB, EP, SA, DA, BP, AC)', numBox(() => m.var.statPct || null, (v) => { m.var.statPct = v || 0; }, 'Stat variation percent', 0, 50, '0')),
+        field('Species', txtIn('info.species', 'Species', 30)),
+        field('Sex', txtIn('info.sex', 'Sex', 20)),
+        field('Age', txtIn('info.age', 'Age', 20)),
+        field('Height', txtIn('info.height', 'Height', 20)),
+        field('Weight', numIn('info.weight', 'Weight', '0')),
+        field('Money', txtIn('info.money', 'Money', 30))),
+      sec('Map token'),
+      tokenImageField(),
+      sec('Tokens'),
+      h('div', { class: 'grid3' },
+        field('Explode tokens', numIn('info.explodeTokens', 'Explode tokens')),
+        field('Totem tokens', numIn('info.totemTokens', 'Totem tokens')),
+        field('Legacy tokens', numIn('info.legacyTokens', 'Legacy tokens')))
+    ];
+  }
+  // A mob's DROPS tab: compendium items, each with a chance and a quantity range, rolled separately for every copy
+  function panelDrops() {
+    const m = cur.book.mob, items = cur.book.comp.data.items;
+    const opts = (sel, cid) => {
+      sel.replaceChildren(...items.map((it) => h('option', { value: it.cid, text: itemLabel(it) })));
+      if (!items.some((it) => it.cid === cid)) sel.prepend(h('option', { value: cid, text: '(item removed from the compendium)' }));
+      sel.value = cid;
+    };
+    const rows = m.drops.map((d, k) => {
+      const sel = h('select', { 'aria-label': 'Item ' + (k + 1) });
+      opts(sel, d.e);
+      sel.addEventListener('change', () => { d.e = sel.value; touch(); });
+      const lbl = (t, el) => h('label', { class: 'skf' }, h('small', { text: t }), el);
+      return h('div', { class: 'item drop-row' },
+        lbl('ITEM', sel),
+        lbl('CHANCE %', numBox(() => d.chance, (v) => { d.chance = v == null ? 0 : v; }, 'Chance percent', 0, 100, '0')),
+        lbl('MIN', numBox(() => d.min, (v) => { d.min = v == null ? 0 : v; }, 'Fewest', 0, 9999, '1')),
+        lbl('MAX', numBox(() => d.max, (v) => { d.max = v == null ? 0 : v; }, 'Most', 0, 9999, '1')),
+        h('button', { class: 'btn small', type: 'button', text: 'REMOVE', 'aria-label': 'Remove drop ' + (k + 1), onclick: () => { m.drops.splice(k, 1); touch(); rebuild('drops'); } }));
+    });
+    return [
+      sec('Drops'),
+      h('p', { class: 'hint', text: 'Instead of an inventory: each copy rolls every line on its own. Chance % is how likely it carries that item; then it gets a random amount from Min to Max.' }),
+      items.length ? null : h('p', { class: 'note', text: "Add items on the compendium's ITEMS tab first; drops are picked from those." }),
+      h('div', { id: 'dropList' }, rows),
+      items.length ? h('button', { class: 'btn small', type: 'button', id: 'addDrop', text: 'ADD DROP', onclick: () => {
+        if (m.drops.length >= 50) return;
+        m.drops.push({ e: items[0].cid, chance: 100, min: 1, max: 1 }); touch(); rebuild('drops');
+      } }) : null
+    ].filter(Boolean);
+  }
+
+  /* ----- the compendium list (home > COMPENDIUM) ----- */
+  function renderCompList(msgText) {
+    const fill = (box, list) => box.replaceChildren(...list.map((b) => h('button', { class: 'btn char-btn', type: 'button', onclick: () => go('compendium-' + b.id) },
+      h('span', { text: b.name }), h('span', { class: 'sub', text: bookCounts(b.data) }))));
+    const mine = compList.filter((b) => b.mine), other = compList.filter((b) => !b.mine);
+    fill($('compList'), mine); fill($('compOther'), other);
+    $('noComps').hidden = mine.length > 0 || compFor !== (state.user && state.user.id);
+    $('compOtherHead').hidden = !other.length;
+    if (msgText != null) $('compMsg').textContent = msgText;
+    else if (compErr) $('compMsg').textContent = compErr;
+  }
+  $('newCompBtn').addEventListener('click', async () => {
+    $('compMsg').textContent = '';
+    const b = { id: uuid(), name: 'New compendium', data: cleanBook({}), mine: true, ownerId: state.user.id };
+    try { await backend.saveCompendium(b); } catch (e) { $('compMsg').textContent = e.message; return; }
+    compList.unshift(b); go('compendium-' + b.id);
+  });
+  $('importCompBtn').addEventListener('click', () => $('compFile').click());
+  $('compFile').addEventListener('change', () => {
+    const f = $('compFile').files && $('compFile').files[0];
+    $('compFile').value = '';
+    if (!f) return;
+    $('compMsg').textContent = '';
+    if (f.size > 6000000) { $('compMsg').textContent = 'That file is too big to be a compendium.'; return; }
+    const rd = new FileReader();
+    rd.onerror = () => { $('compMsg').textContent = 'Could not read that file.'; };
+    rd.onload = async () => {
+      let data;
+      try { data = JSON.parse(String(rd.result)); } catch (e) { $('compMsg').textContent = 'That file is not a compendium.'; return; }
+      if (!data || data.format !== COMP_FORMAT || !data.compendium || typeof data.compendium !== 'object') { $('compMsg').textContent = 'That file is not a compendium from this app.'; return; }
+      if (Number(data.version) > 1) { $('compMsg').textContent = 'That compendium was made by a newer version of the app.'; return; }
+      const b = { id: uuid(), name: String(data.compendium.name || '').trim().slice(0, 60) || 'Imported compendium', data: cleanBook(data.compendium.data), mine: true, ownerId: state.user.id };
+      try { await backend.saveCompendium(b); } catch (e) { $('compMsg').textContent = e.message; return; }
+      compList.unshift(b); go('compendium-' + b.id);
+    };
+    rd.readAsText(f);
+  });
+  function exportBook(b) {
+    const n = String(b.name || 'compendium').replace(/[^A-Za-z0-9 _-]+/g, '').trim().replace(/\s+/g, '_').slice(0, 40) || 'compendium';
+    downloadText(n + '.compendium.json', JSON.stringify({ format: COMP_FORMAT, version: 1, exported: new Date().toISOString(), compendium: { name: b.name, data: cleanBook(b.data) } }, null, 2));
+  }
+
+  /* ----- a campaign's compendium (QM): choose it, add mobs, give items ----- */
+  async function compCard(g, note) {
+    const close = () => { $('etModal').hidden = true; $('etBody').replaceChildren(); };
+    $('etTitle').textContent = 'Campaign compendium';
+    if (!$('etModal').hidden && $('etBody').querySelector('#ccBook')) { /* refreshing in place */ } else $('etBody').replaceChildren(h('p', { class: 'note', text: 'Loading...' }));
+    $('etModal').hidden = false; $('etTitle').focus({ preventScroll: true });
+    await ensureComps(true);
+    const live = state.campaigns.find((x) => x.id === g.id) || g;
+    if (!iAmQm(live)) { close(); return; }
+    const closeBtn = h('button', { class: 'btn small', type: 'button', id: 'etCancel', text: 'CLOSE', onclick: close });
+    const msg = h('p', { class: 'skill-out', role: 'status', id: 'ccMsg', text: note || '' });
+    const mine = compList.filter((b) => b.mine), bk = compList.find((b) => b.id === live.compendiumId) || null;
+    const sel = h('select', { id: 'ccBook', 'aria-label': "The campaign's compendium" }, h('option', { value: '', text: 'None' }),
+      ...mine.map((b) => h('option', { value: b.id, text: b.name })));
+    if (live.compendiumId && !mine.some((b) => b.id === live.compendiumId)) sel.append(h('option', { value: live.compendiumId, text: (bk ? bk.name : 'A compendium') + " (another QM's)" }));
+    sel.value = live.compendiumId || '';
+    sel.addEventListener('change', async () => {
+      sel.disabled = true;
+      try { await backend.setCampaignCompendium(live.id, sel.value || null); live.compendiumId = sel.value || null; compCard(live, sel.value ? 'This campaign now uses that compendium.' : 'This campaign uses no compendium now.'); }
+      catch (e) { msg.textContent = e.message; sel.disabled = false; sel.value = live.compendiumId || ''; }
+    });
+    const parts = [
+      h('p', { class: 'note', text: 'The QMs of this campaign can add mobs and give items from its compendium. The players never see it. Only its owner can change it.' }),
+      h('label', { class: 'fld' }, h('span', { class: 'lbl', text: 'Compendium' }), sel)];
+    if (!mine.length && !live.compendiumId) parts.push(h('p', { class: 'note', text: compErr || 'You have no compendiums yet. Make one with COMPENDIUM on the home screen.' }));
+    if (live.compendiumId && !bk) parts.push(h('p', { class: 'note', text: compErr || 'That compendium could not be loaded.' }));
+    if (bk) {
+      const d = bk.data;
+      parts.push(h('button', { class: 'btn small', type: 'button', id: 'ccOpen', text: bk.mine ? 'OPEN AND EDIT' : 'OPEN (READ ONLY)', onclick: () => { close(); go('compendium-' + bk.id); } }));
+      // add mobs
+      const mobSel = h('select', { id: 'ccMob', 'aria-label': 'Mob' }, ...(d.mobs.length ? d.mobs.map((m) => h('option', { value: m.cid, text: mobLabel(m) })) : [h('option', { value: '', text: 'No mobs in it yet' })]));
+      const count = h('input', { type: 'number', id: 'ccCount', class: 'num', min: '1', max: '20', step: '1', value: '3', 'aria-label': 'How many' });
+      const mobGo = h('button', { class: 'btn', type: 'button', id: 'ccAddMobs', text: 'ADD MOBS', disabled: !d.mobs.length, onclick: async () => {
+        const m = d.mobs.find((x) => x.cid === mobSel.value), n = Math.floor(Number(count.value));
+        if (!m) { msg.textContent = 'Pick a mob.'; return; }
+        if (!(n >= 1 && n <= 20)) { msg.textContent = 'How many is 1 to 20.'; return; }
+        mobGo.disabled = true; msg.textContent = '';
+        let rows = state.campChars;
+        try { rows = await backend.listCampaignCharacters(live.id); } catch (e) { /* use what is on screen */ }
+        const base = String(m.ch.info.name || '').trim() || 'Mob', made = [];
+        let k = nextMobNumber(rows.concat(state.chars.filter((c) => c.campaignId === live.id).map((c) => ({ ch: c }))), base);
+        try {
+          for (let i = 0; i < n; i++, k++) {
+            const c = rollMob(d, m, (base + ' ' + k).slice(0, 60), bk.id);
+            await backend.createNpc(live.id, c);
+            c.campaignId = live.id; c.isNpc = true; c.npcVisible = false; state.chars.unshift(c); made.push(c.info.name);
+          }
+          msg.textContent = 'Added ' + made.join(', ') + '. They are hidden; show each to the players from the roster.';
+        } catch (e) { msg.textContent = (made.length ? 'Added ' + made.join(', ') + ', then stopped: ' : '') + e.message; }
+        mobGo.disabled = false;
+        try { const r2s = await backend.listCampaignCharacters(live.id); state.campChars = r2s; state.campChars.forEach((r) => { r.ch = normalizeChar(r.ch); }); state.campCharsFor = live.id; if (curCampaignId === live.id) renderCampaignPage(); } catch (e) { /* next refresh shows them */ }
+      } });
+      // give items
+      const people = (state.campCharsFor === live.id ? state.campChars : []).filter((r) => !r.stub && r.ch)
+        .sort((x, y) => (x.ch.isNpc - y.ch.isNpc) || (x.ch.info.name || '').localeCompare(y.ch.info.name || ''));
+      const itemSel = h('select', { id: 'ccItem', 'aria-label': 'Item' }, ...(d.items.length ? d.items.map((it) => h('option', { value: it.cid, text: itemLabel(it) })) : [h('option', { value: '', text: 'No items in it yet' })]));
+      const toSel = h('select', { id: 'ccTo', 'aria-label': 'Give to which character' }, h('option', { value: '', text: people.length ? 'Give to...' : 'No characters here yet' }),
+        ...people.map((r) => h('option', { value: r.ch.id, text: (r.ch.info.name || 'Unnamed character') + (r.ch.isNpc ? ' (NPC)' : ' (' + r.owner + ')') })));
+      const iq = h('input', { type: 'number', id: 'ccQty', class: 'num', min: '1', max: '9999', step: '1', 'aria-label': 'How many' });
+      const syncQ = () => { const it = d.items.find((x) => x.cid === itemSel.value); iq.value = String(it ? Math.max(1, Math.floor(effQty(it)) || 1) : 1); };
+      itemSel.addEventListener('change', syncQ); syncQ();
+      const giveGo = h('button', { class: 'btn', type: 'button', id: 'ccGive', text: 'GIVE ITEM', disabled: !d.items.length, onclick: async () => {
+        const it = d.items.find((x) => x.cid === itemSel.value), to = people.find((r) => r.ch.id === toSel.value), n = Math.floor(Number(iq.value));
+        if (!it) { msg.textContent = 'Pick an item.'; return; }
+        if (!String(it.name || '').trim()) { msg.textContent = 'That item has no name yet; name it in the compendium first.'; return; }
+        if (!to) { msg.textContent = 'Choose who gets it.'; return; }
+        if (!(n >= 1 && n <= 9999)) { msg.textContent = 'How many is 1 to 9999.'; return; }
+        giveGo.disabled = true;
+        try { await backend.giveItem(null, to.ch.id, giftOf(copyFrom('items', it, bk.id), n)); msg.textContent = 'Gave ' + n + ' ' + itemLabel(it) + ' to ' + (to.ch.info.name || 'Unnamed character') + '.'; }
+        catch (e) { msg.textContent = e.message; }
+        giveGo.disabled = false;
+      } });
+      parts.push(
+        h('hr', { class: 'rest-sep' }), h('span', { class: 'dline rest-name', text: 'Add mobs' }),
+        h('label', { class: 'fld' }, h('span', { class: 'lbl', text: 'Mob' }), mobSel),
+        h('label', { class: 'fld' }, h('span', { class: 'lbl', text: 'How many' }), count), mobGo,
+        h('hr', { class: 'rest-sep' }), h('span', { class: 'dline rest-name', text: 'Give an item' }),
+        h('label', { class: 'fld' }, h('span', { class: 'lbl', text: 'Item' }), itemSel),
+        h('label', { class: 'fld' }, h('span', { class: 'lbl', text: 'To' }), toSel),
+        h('label', { class: 'fld' }, h('span', { class: 'lbl', text: 'How many' }), iq), giveGo);
+    }
+    parts.push(msg, closeBtn);
+    $('etBody').replaceChildren(...parts);
+  }
+  function compButton(g) { return h('button', { class: 'btn small', type: 'button', id: 'compBtn', text: 'COMPENDIUM', onclick: () => compCard(g) }); }
+
   /* ================= Character sheet ================= */
   let cur = null;   // { ch, outs, panels, spIn, epIn }
 
   const TABS = [['info', 'INFO'], ['stats', 'STATS'], ['talents', 'TALENTS'], ['skills', 'SKILLS'],
                 ['totem', 'TOTEM'], ['buffs', 'BUFFS'], ['items', 'ITEMS'], ['abilities', 'ABILITIES'], ['story', 'STORY']];
+  // A compendium opens on the same screen: the book itself (BOOK_TABS), or one of its mobs (a sheet with DROPS instead of ITEMS)
+  const BOOK_TABS = [['info', 'INFO'], ['items', 'ITEMS'], ['mobs', 'MOBS'], ['abilities', 'ABILITIES']];
+  const MOB_TABS = TABS.map(([id, label]) => (id === 'items' ? ['drops', 'DROPS'] : [id, label]));
+  const tabsNow = () => (cur && cur.book ? (cur.book.mob ? MOB_TABS : BOOK_TABS) : TABS);
 
   function touch() {
+    if (cur.book) { if (!cur.viewOnly) queueBookSave(cur.book.comp); refresh(); return; }
     if (cur.viewOnly) { if (cur.qmItems) { queueItemsSave(); refresh(); } return; }   // someone else's character is never saved from here (a QM's item changes go by setItems)
     cur.ch.updated = Date.now(); queueSave(cur.ch); refresh();
   }
@@ -3248,30 +3811,22 @@
     });
   }
 
-  function openSheet(ch, viewOnly) {
-    cur = { ch, outs: {}, bars: {}, viewOnly: viewOnly || null, itemOpen: new Set(), buffOpen: new Set() };
+  function openSheet(ch, viewOnly, book) {
+    cur = { ch, outs: {}, bars: {}, viewOnly: viewOnly || null, book: book || null, itemOpen: new Set(), buffOpen: new Set() };
     // a QM looking at someone else's character in their campaign can change its items (saved with setItems)
     const camp = viewOnly && !viewOnly.draft && ch.campaignId && state.campaigns.find((g) => g.id === ch.campaignId);
     cur.qmItems = !!(camp && iAmQm(camp));
     const tabs = $('tabs'), panels = $('panels');
     tabs.replaceChildren(); panels.replaceChildren();
     cur.panels = {};
-    TABS.forEach(([id, label]) => {
+    tabsNow().forEach(([id, label]) => {
       tabs.append(h('button', { class: 'tab', type: 'button', role: 'tab', id: 'tab-' + id, 'aria-selected': 'false', 'aria-controls': 'panel-' + id,
         text: label, onclick: () => showTab(id) }));
       const p = h('div', { class: 'panel', id: 'panel-' + id, role: 'tabpanel', hidden: true });
       cur.panels[id] = p; panels.append(p);
     });
-    cur.panels.info.append(...panelInfo());
-    cur.panels.stats.append(...panelStats());
-    cur.panels.talents.append(...panelTalents());
-    cur.panels.skills.append(...panelSkills());
-    cur.panels.totem.append(...panelTotem());
-    cur.panels.buffs.append(...panelBuffs());
-    cur.panels.items.append(...panelItems());
-    cur.panels.abilities.append(...panelAbilities());
-    cur.panels.story.append(...panelStory());
-    setStatus(pending && pending.id === ch.id ? 'Saving...' : '');
+    tabsNow().forEach(([id]) => { cur.panels[id].append(...panelFn(id)()); });
+    setStatus(book ? (bookPend === book.comp ? 'Saving...' : '') : pending && pending.id === ch.id ? 'Saving...' : '');
     if (cur.viewOnly) {   // someone else's character: look, don't touch (a QM may change the items)
       Object.entries(cur.panels).forEach(([id, p]) => { if (!(id === 'items' && cur.qmItems)) lockPanel(p); });
       setStatus(viewOnlyStatus());
@@ -3285,7 +3840,7 @@
     p.querySelectorAll('.chev').forEach((e) => { e.disabled = false; });   // reading an item's description is still allowed
     p.querySelectorAll('.danger').forEach((e) => { e.hidden = true; });
   }
-  const viewOnlyStatus = () => 'Read only' + (cur.viewOnly.owner ? ' · ' + cur.viewOnly.owner + "'s " + (cur.ch.isNpc ? 'NPC' : 'character') : '') + (cur.qmItems ? ' · you can change the items (QM)' : '');
+  const viewOnlyStatus = () => (cur.book ? "Read only · another QM's compendium" : '') || 'Read only' + (cur.viewOnly.owner ? ' · ' + cur.viewOnly.owner + "'s " + (cur.ch.isNpc ? 'NPC' : 'character') : '') + (cur.qmItems ? ' · you can change the items (QM)' : '');
   // A QM's item changes on someone else's sheet: sent as the whole item list, half a second after the last change
   let itemsTimer = null;
   function queueItemsSave() {
@@ -3303,7 +3858,7 @@
   }
 
   function showTab(id) {
-    TABS.forEach(([t]) => {
+    tabsNow().forEach(([t]) => {
       $('tab-' + t).setAttribute('aria-selected', String(t === id));
       cur.panels[t].hidden = t !== id;
     });
@@ -3457,6 +4012,7 @@
     return [
       sec('Campaign'),
       h('div', { class: 'stackf' }, campField, ...playerFields(), ...npcFields(), ...npcManageFields()),
+      (cur.mobRefBox = h('div', { id: 'mobRefBox' }, ...mobRefFields())),
       sec('Character'),
       h('div', { class: 'grid2' },
         field('Name', txtIn('info.name', 'Name', 40), 'span2'),
@@ -3557,13 +4113,15 @@
 
   /* ----- TALENTS ----- */
   function talentGrid(path, ph) {
+    const mv = path === 'talents' && cur.book && cur.book.mob ? cur.book.mob.var : null;   // a compendium mob: each talent has a +/- range
     return h('div', { class: 'grid3' }, BSH.TALENTS.map((t, i) =>
-      field(t.name + ' (' + t.key + ')', numIn(path + '.' + i, t.name, ph))));
+      field(t.name + ' (' + t.key + ')', mv ? h('div', { class: 'varrow' }, numIn(path + '.' + i, t.name, ph), h('span', { class: 'pm', text: '±' }),
+        rangeIn(() => mv.talents[i], (v) => { mv.talents[i] = v; }, t.name + ' range (each copy rolls this much up or down)')) : numIn(path + '.' + i, t.name, ph))));
   }
   function panelTalents() {
     return [
       sec('Talent points'),
-      h('p', { class: 'hint', text: 'Each talent starts at 10. Totem and buff bonuses are on their own tabs.' }),
+      h('p', { class: 'hint', text: 'Each talent starts at 10. Totem and buff bonuses are on their own tabs.' + (cur.book && cur.book.mob ? ' The box after ± is a range: each copy of this mob gets the talent plus or minus a random amount up to it.' : '') }),
       talentGrid('talents', '10'),
       h('div', { class: 'lv', style: 'margin-top:1rem' }, h('span', { text: 'Talent level' }), out('talentLevel2', ''))
     ];
@@ -3574,16 +4132,18 @@
   const SKILL_GROUPS = [['Fighter', 0], ['Explorer', 9], ['Speaker', 18], ['Supporter', 27]];
   function skillCard(s, i) {
     const field = (cap, input) => h('label', { class: 'skf' }, h('small', { text: cap }), input);
+    const mv = cur.book && cur.book.mob ? cur.book.mob.var : null;   // a compendium mob: proficiency +/- range
     return h('div', { class: 'skc' },
       h('div', { class: 'skt' }, h('div', { class: 'nm' }, h('b', { text: s.name }), h('small', { text: s.talents })), out('skill.' + i)),
       h('div', { class: 'ski' },
-        field('PROF', numIn('prof.' + i, s.name + ' proficiency points')),
+        field(mv ? 'PROF ±' : 'PROF', mv ? h('div', { class: 'varrow' }, numIn('prof.' + i, s.name + ' proficiency points'), h('span', { class: 'pm', text: '±' }),
+          rangeIn(() => mv.prof[i], (v) => { mv.prof[i] = v; }, s.name + ' proficiency range (each copy rolls this much up or down)')) : numIn('prof.' + i, s.name + ' proficiency points')),
         field('+/- #', numIn('skillAdj.' + i, s.name + ' flat adjustment')),
         field('+/- %', numIn('skillAdjPct.' + i, s.name + ' percent adjustment'))));
   }
   function panelSkills() {
     return [
-      h('p', { class: 'hint', text: 'Modifier = its two talents - 20 + 4 x proficiency, plus Totem and Buff bonuses, then your +/- # and +/- %.' }),
+      h('p', { class: 'hint', text: 'Modifier = its two talents - 20 + 4 x proficiency, plus Totem and Buff bonuses, then your +/- # and +/- %.' + (cur.book && cur.book.mob ? ' The box after ± is a range: each copy of this mob gets the proficiency plus or minus a random amount up to it.' : '') }),
       ...SKILL_GROUPS.flatMap(([name, start]) => [
         h('h4', { class: 'subsec', text: name }),
         h('div', { class: 'skgrid' }, BSH.SKILLS.slice(start, start + 9).map((s, k) => skillCard(s, start + k)))
@@ -3634,7 +4194,14 @@
   const cleanWeapon = (w) => { const o = {}; WEAPON_PROPS.forEach(([k]) => { o[k] = w && w[k] != null ? String(w[k]).slice(0, 1000) : ''; }); return o; };
   // An attack: name, cost ("2 AP"), Attack Dmg formula, range, damage type, effect; needsLoad (weapon attacks) means the weapon must be loaded
   const ATTACK_FIELDS = [['name', 'Name', 60], ['cost', 'Cost', 20], ['dmg', 'Attack Dmg', 100], ['range', 'Range', 60], ['damage', 'Dmg Type', 60], ['effect', 'Effect', 1000]];
-  const cleanAttack = (a) => { const o = {}; ATTACK_FIELDS.forEach(([k, , n]) => { o[k] = a && a[k] != null ? String(a[k]).slice(0, n) : ''; }); if (a && a.needsLoad === true) o.needsLoad = true; return o; };
+  // A link from a copy back to its compendium entry: { c: compendium id, e: entry id }
+  const cleanRef = (r) => (r && typeof r === 'object' && typeof r.c === 'string' && typeof r.e === 'string' && r.c.length <= 64 && r.e.length <= 64 ? { c: r.c, e: r.e } : null);
+  const cleanAttack = (a) => {
+    const o = {}; ATTACK_FIELDS.forEach(([k, , n]) => { o[k] = a && a[k] != null ? String(a[k]).slice(0, n) : ''; }); if (a && a.needsLoad === true) o.needsLoad = true;
+    if (a && typeof a.cid === 'string' && a.cid.length <= 64) o.cid = a.cid;   // an attack kept in a compendium
+    const rf = cleanRef(a && a.cref); if (rf) o.cref = rf;                       // a copy of one
+    return o;
+  };
   const cleanAttacks = (l) => (Array.isArray(l) ? l : []).filter((a) => a && typeof a === 'object').slice(0, 20).map(cleanAttack);
   const unarmedStrike = () => cleanAttack({ name: 'Unarmed Strike', cost: '2 AP', dmg: 'BP', range: '0-1', effect: 'Make an Attack without a Weapon.' });
   // Weapons made before attack lists had one Cost / Attack Dmg / Range / Dmg Type: those become the weapon's first attack
@@ -3682,6 +4249,7 @@
       const ni = { name: inc.name, qty: inc.qty, charges: clampCharges(mi), desc: inc.desc || '',
         wearable: !!inc.wearable, weapon: !!inc.weapon, magic: !!inc.magic, buffs: cleanBuffs(inc.buffs), weaponProps: cleanWeapon(inc.weaponProps), magicProps: mi.magicProps };
       if (ni.weapon) { ni.attacks = attacksFor(inc.name, inc.attacks, inc.weaponProps); if (typeof inc.twoHanded === 'boolean') ni.twoHanded = inc.twoHanded; fixWeapon(ni); }
+      if (cleanRef(inc.cref)) ni.cref = cleanRef(inc.cref);
       ch.items.push(ni);
     }
     ch.giftLog.push(gift.id);
@@ -3731,8 +4299,8 @@
     const acts = h('div', { class: 'iact' },
       h('button', { class: 'btn', type: 'button', text: '-1', 'aria-label': 'Remove one', onclick: () => setQty(effQty(it) - 1) }),
       h('button', { class: 'btn', type: 'button', text: '+1', 'aria-label': 'Add one', onclick: () => setQty(effQty(it) + 1) }),
-      HANDS.map(handBtn),
-      it.wearable ? h('button', { class: 'btn', type: 'button', text: 'BODY', 'aria-pressed': String(!!it.eqB), onclick: () => {
+      cur.book ? null : HANDS.map(handBtn),
+      it.wearable && !cur.book ? h('button', { class: 'btn', type: 'button', text: 'BODY', 'aria-pressed': String(!!it.eqB), onclick: () => {
         it.eqB = !it.eqB; if (it.eqB) { it.eqL = false; it.eqR = false; }   // any number of things on the body, but not also in a hand
         touch(); rebuild('items');
       } }) : null,
@@ -3740,10 +4308,11 @@
         bf.hidden = !bf.hidden; if (bf.hidden) cur.buffOpen.delete(it); else cur.buffOpen.add(it);
         e.currentTarget.setAttribute('aria-expanded', String(!bf.hidden));
       } }),
-      cur.viewOnly ? null : h('button', { class: 'btn', type: 'button', text: 'GIVE', 'aria-expanded': 'false', onclick: (e) => {
+      cur.viewOnly || cur.book ? null : h('button', { class: 'btn', type: 'button', text: 'GIVE', 'aria-expanded': 'false', onclick: (e) => {
         give.el.hidden = !give.el.hidden; e.currentTarget.setAttribute('aria-expanded', String(!give.el.hidden));
         if (!give.el.hidden) give.load();
-      } }));
+      } }),
+      updateBtn('items', it, 'items'));
     const flags = h('div', { class: 'iflags' }, FLAGS.map(([k, label]) => {
       const cb = h('input', { type: 'checkbox', checked: !!it[k], 'aria-label': label });
       cb.addEventListener('change', () => { it[k] = cb.checked; if (k === 'wearable' && !cb.checked) it.eqB = false; if (k === 'weapon') fixWeapon(it); touch(); rebuild('items'); });
@@ -3803,7 +4372,7 @@
     };
     const chk = (key, label) => h('label', { class: 'chk' }, bind(h('input', { type: 'checkbox', 'aria-label': label }), 'items.' + i + '.' + key, 'check'), h('span', { text: label }));
     return h('div', { class: 'wprops' }, h('h4', { class: 'subsec', text: 'Weapon' }),
-      h('div', { class: 'wpgrid' }, WEAPON_PROPS.map(fld), chk('twoHanded', 'Two-handed'), chk('loaded', 'Loaded')),
+      h('div', { class: 'wpgrid' }, WEAPON_PROPS.map(fld), chk('twoHanded', 'Two-handed'), cur.book ? null : chk('loaded', 'Loaded')),
       h('h4', { class: 'subsec', text: 'Attacks' }),
       h('p', { class: 'hint', text: 'Listed in the Actions menu while this weapon is in your hand' + (it.twoHanded ? 's (both of them).' : '.') }),
       attackList('items.' + i + '.attacks', it.attacks, 'items', true, it.name));
@@ -3817,7 +4386,8 @@
           h('button', { class: 'btn small', type: 'button', text: 'REMOVE', 'aria-label': 'Remove attack ' + (a.name || ''), onclick: () => { list.splice(j, 1); touch(); rebuild(tab); } })),
         h('div', { class: 'wpgrid' }, field('Attack Dmg', txtIn(p + 'dmg', 'Attack Dmg', 100)), field('Range', txtIn(p + 'range', 'Attack range', 60)), field('Dmg Type', txtIn(p + 'damage', 'Attack damage type', 60)),
           isWeapon ? h('label', { class: 'chk' }, bind(h('input', { type: 'checkbox', 'aria-label': 'Needs the weapon loaded' }), p + 'needsLoad', 'check'), h('span', { text: 'Needs loading' })) : null,
-          h('div', { class: 'wp-wide' }, field('Effect', area(p + 'effect', 'Attack effect')))));
+          h('div', { class: 'wp-wide' }, field('Effect', area(p + 'effect', 'Attack effect')))),
+        isWeapon ? null : updateRow('attacks', a, tab));
     };
     return h('div', { class: 'attacks' }, list.map(card),
       h('button', { class: 'btn small', type: 'button', text: 'ADD ATTACK', 'data-add-attack': isWeapon ? 'weapon' : 'character', onclick: () => {
@@ -3921,16 +4491,19 @@
     const list = h('div', { id: 'itemList' }, cur.ch.items.map((_, i) => itemCard(i)));
     const inHand = ([k]) => { const x = cur.ch.items.find((t) => t[k]); return x ? itemLabel(x) : 'empty'; };
     const note = cur.itemNote; cur.itemNote = '';
+    const bk = !!cur.book, canAdd = !cur.viewOnly || cur.qmItems;
     return [
       sec('Items'),
+      bk ? h('p', { class: 'hint', text: 'Items kept in this compendium. Quantity and charges are what a copy starts with.' }) : null,
       note ? h('p', { class: 'msg', role: 'status', text: note }) : null,
-      h('p', { class: 'note hands', id: 'handsLine', text: 'Left hand: ' + inHand(HANDS[0]) + '  ·  Right hand: ' + inHand(HANDS[1]) + '  ·  Body: ' + (cur.ch.items.filter((t) => t.eqB).map(itemLabel).join(', ') || 'nothing') }),
-      (() => { const l = BSH.itemBuffs(cur.ch).list; return l.length ? h('p', { class: 'note hands', id: 'itemBuffLine', text: 'Item buffs: ' + l.map((b) => buffName(b) + ' ' + signedAmt(b.amt)).join(', ') }) : null; })(),
+      bk ? null : h('p', { class: 'note hands', id: 'handsLine', text: 'Left hand: ' + inHand(HANDS[0]) + '  ·  Right hand: ' + inHand(HANDS[1]) + '  ·  Body: ' + (cur.ch.items.filter((t) => t.eqB).map(itemLabel).join(', ') || 'nothing') }),
+      bk ? null : (() => { const l = BSH.itemBuffs(cur.ch).list; return l.length ? h('p', { class: 'note hands', id: 'itemBuffLine', text: 'Item buffs: ' + l.map((b) => buffName(b) + ' ' + signedAmt(b.amt)).join(', ') }) : null; })(),
       cur.ch.items.length ? h('div', { class: 'iline ihead' }, h('span'), h('span', { text: 'Item' }), h('span'), h('span', { text: 'Qty' }), h('span', { text: 'Charges' }), h('span')) : null,
       list,
       h('button', { class: 'btn small', type: 'button', text: 'ADD ITEM', onclick: () => {
         cur.ch.items.push({ name: '', qty: null, charges: null, desc: '', wearable: false, weapon: false, magic: false, buffs: [], weaponProps: {}, magicProps: {} }); touch(); rebuild('items');
-      } })
+      } }),
+      !bk && canAdd ? h('button', { class: 'btn small', type: 'button', id: 'itemFromComp', text: 'FROM COMPENDIUM', onclick: () => compPicker([['items', 'Item']]) }) : null
     ].filter(Boolean);
   }
 
@@ -3939,7 +4512,7 @@
     const ab = cur.ch.abilities[i];
     const card = h('div', { class: 'item' });
     const chev = h('button', { class: 'chev', type: 'button', 'aria-label': 'Show or hide the description' });
-    const desc = h('div', { class: 'idesc' }, field('Description', growArea('abilities.' + i + '.desc', 'Ability description')));
+    const desc = h('div', { class: 'idesc' }, field('Description', growArea('abilities.' + i + '.desc', 'Ability description')), updateRow('abilities', ab, 'abilities'));
     const name = nameIn('abilities.' + i + '.name', 'Ability name', 60);
     const setOpen = (open) => {
       if (open) cur.itemOpen.add(ab); else cur.itemOpen.delete(ab);
@@ -3980,27 +4553,29 @@
     return h('div', { class: 'item custom-action' },
       h('div', { class: 'iline abl' }, nameIn('customActions.' + i + '.name', 'Custom action name', 60), txtIn('customActions.' + i + '.cost', 'Custom action cost, for example 2 AP', 20),
         h('button', { class: 'btn small', type: 'button', text: 'REMOVE', onclick: () => { cur.ch.customActions.splice(i, 1); touch(); rebuild('abilities'); } })),
-      h('div', { class: 'idesc' }, field('Description', growArea('customActions.' + i + '.desc', 'Custom action description'))));
+      h('div', { class: 'idesc' }, field('Description', growArea('customActions.' + i + '.desc', 'Custom action description')), updateRow('customActions', cur.ch.customActions[i], 'abilities')));
   }
   function panelAbilities() {
     if (!Array.isArray(cur.ch.customActions)) cur.ch.customActions = [];
     if (!Array.isArray(cur.ch.attacks)) cur.ch.attacks = [unarmedStrike()];
+    const bk = !!cur.book && !cur.book.mob;
     return [
-      sec('Abilities and fighting styles'),
+      bk || cur.viewOnly ? null : h('button', { class: 'btn small', type: 'button', id: 'abFromComp', text: 'ADD FROM COMPENDIUM', onclick: () => compPicker([['abilities', 'Ability'], ['attacks', 'Attack'], ['customActions', 'Custom action']]) }),
+      sec(bk ? 'Abilities' : 'Abilities and fighting styles'),
       h('div', {}, cur.ch.abilities.map((_, i) => abilityCard(i))),
       h('button', { class: 'btn small', type: 'button', text: 'ADD ABILITY', onclick: () => {
         cur.ch.abilities.push({ name: '', desc: '' }); touch(); rebuild('abilities');
       } }),
       sec('Attacks'),
-      h('p', { class: 'hint', text: 'Your own attacks, always listed in the Actions menu. A weapon in your hand adds its attacks (set them on the ITEMS tab).' }),
+      h('p', { class: 'hint', text: bk ? 'Attacks to add to sheets. Weapon attacks belong to the weapon (ITEMS tab).' : 'Your own attacks, always listed in the Actions menu. A weapon in your hand adds its attacks (set them on the ITEMS tab).' }),
       attackList('attacks', cur.ch.attacks, 'abilities', false),
       sec('Custom actions'),
-      h('p', { class: 'hint', text: 'Actions of your own, listed in the Actions menu. Give a cost like 2 AP or 1 SP to get a button that spends it in an encounter.' }),
+      h('p', { class: 'hint', text: bk ? 'Custom actions to add to sheets. A cost like 2 AP or 1 SP gives a button that spends it in an encounter.' : 'Actions of your own, listed in the Actions menu. Give a cost like 2 AP or 1 SP to get a button that spends it in an encounter.' }),
       h('div', {}, cur.ch.customActions.map((_, i) => customActionCard(i))),
       h('button', { class: 'btn small', type: 'button', id: 'addCustomAction', text: 'ADD CUSTOM ACTION', onclick: () => {
         cur.ch.customActions.push({ name: '', cost: '', desc: '' }); touch(); rebuild('abilities');
       } })
-    ];
+    ].filter(Boolean);
   }
 
   /* ----- STORY ----- */
@@ -4015,10 +4590,16 @@
   // Rebuild one list panel after add/remove (keeps scroll position and other tabs untouched)
   function rebuild(id) {
     const y = window.scrollY;
-    const fn = { items: panelItems, abilities: panelAbilities }[id];
-    cur.panels[id].replaceChildren(...fn());
+    if (!cur.panels[id]) return;
+    cur.panels[id].replaceChildren(...panelFn(id)());
     if (cur.viewOnly && !(id === 'items' && cur.qmItems)) lockPanel(cur.panels[id]);
     window.scrollTo(0, y);
+  }
+
+  function panelFn(id) {
+    if (id === 'info') return cur.book ? (cur.book.mob ? panelMobInfo : panelBookInfo) : panelInfo;
+    return { stats: panelStats, talents: panelTalents, skills: panelSkills, totem: panelTotem, buffs: panelBuffs, items: panelItems,
+      abilities: panelAbilities, story: panelStory, mobs: panelMobs, drops: panelDrops }[id];
   }
 
   /* ----- Live calculation ----- */
@@ -4027,7 +4608,9 @@
     const ch = cur.ch, r = BSH.compute(ch), o = cur.outs;
     const set = (k, t) => { if (o[k]) o[k].textContent = t; };
 
-    $('sheetTitle').textContent = ch.info.name || 'New character';
+    $('sheetTitle').textContent = cur.book ? (cur.book.mob ? (ch.info.name || 'Unnamed mob') + (cur.book.mob.kind === 'boss' ? ' (boss)' : ' (mob)') : ch.info.name || cur.book.comp.name)
+      : ch.info.name || 'New character';
+    if (cur.book && !cur.book.mob && cur.outs.bookCounts) cur.outs.bookCounts.textContent = bookCounts(cur.book.comp.data);
     r.skillMod.forEach((m, i) => set('skill.' + i, signed(m)));
     r.stat.forEach((v, i) => set('stat.' + i, fmt(v)));
     if (cur.hpIn && document.activeElement !== cur.hpIn) cur.hpIn.value = fmt(r.hpRemaining);

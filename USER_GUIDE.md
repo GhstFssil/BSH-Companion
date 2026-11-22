@@ -1,6 +1,6 @@
 # Bloodsoup Hell Companion: User Guide
 
-This guide explains how to use the Companion app. For how the game itself works, tap **RULES** (top center of every screen).
+This guide explains how to use the Companion app. For how the game itself works, tap **RULES** at the top of every screen.
 
 ## 1. Getting started
 
@@ -21,13 +21,14 @@ After logging in, tap **ENTER THE RING** on the title page to reach the home scr
 | Button | What it does |
 |---|---|
 | **CHARACTERS** | Your characters and NPCs |
+| **COMPENDIUM** | Your libraries of items, mobs, abilities, attacks and custom actions (see section 3) |
 | **CAMPAIGNS** | Campaigns you belong to |
 | **CREATE CAMPAIGN** | Start a new campaign (you become its QM) |
 | **JOIN CAMPAIGN** | Join a campaign that already exists |
 | **NOTES** | Your own notes pages (saved on this device only; see the warning in section 7) |
 | **OPTIONS** | Text size and color (saved on this device only) |
 
-The **RULES** button stays at the top center of every screen.
+**RULES**, **GUIDE** and **NOTES** sit together at the top of every screen (on a phone, in a row under BACK and LOG OUT). NOTES appears once you are logged in.
 
 ## 3. Characters
 
@@ -59,6 +60,17 @@ Sheets save automatically. The sheet has nine tabs:
 **Comparing characters.** **COMPARE** on the Characters page lists your characters and everyone you can see in your campaigns (a private NPC sheet is not shown). Tick two to four and the app lays their stats and skills side by side, highlighting the highest value in each row. Weight Class is never highlighted, since lower can be better.
 
 **Sharing a sheet.** **EXPORT SHEET** at the top of a sheet downloads it as a file. Anyone can load it with IMPORT CHARACTER as a new character of their own.
+
+**Compendium.** A compendium is your own library of things you make once and then copy onto sheets: items, mobs, abilities, attacks and custom actions. **COMPENDIUM** on the home screen lists yours; **NEW COMPENDIUM** makes one (you can have several). It opens like a sheet with four tabs:
+
+- **INFO**: its name, what is in it, and DELETE COMPENDIUM.
+- **ITEMS**: items, made the same way as on a sheet (weapons, attacks, magic, buffs). The quantity and charges are what a copy starts with.
+- **MOBS**: enemies and other NPCs. **ADD MOB** opens a new mob as a sheet; **MAKE MOB** turns one of your characters into a mob (its items become compendium items it always carries). **COPY** duplicates a mob.
+- **ABILITIES**: abilities, attacks and custom actions.
+
+A mob is a sheet with a few extras. On its INFO tab: **Mob** or **Boss**, and a **stat variation %** (each copy's HP, SP, RD, IB, EP, SA, DA, BP and AC moves up or down by a random amount within it). On TALENTS and SKILLS, the box after **±** next to each talent and proficiency is a range: "3 ± 1" gives each copy 2, 3 or 4. Instead of ITEMS a mob has **DROPS**: pick compendium items, each with a **Chance %** and a **Min** and **Max** amount. Every copy rolls each line on its own.
+
+To use it: **FROM COMPENDIUM** (ITEMS tab) and **ADD FROM COMPENDIUM** (ABILITIES tab) on a sheet add a copy. A copy keeps a link to the compendium, and its **UPDATE FROM COMPENDIUM** button (inside the item or ability, or under the attack or custom action) replaces it with the compendium's latest version. An item keeps its quantity, charges and hands. **EXPORT COMPENDIUM** saves a compendium as a file, and **IMPORT COMPENDIUM** loads one as a new compendium. QMs: see "Campaign compendium" in section 6.
 
 **Deleting.** DELETE CHARACTER is at the bottom of the sheet. Each destructive button needs a second tap to confirm.
 
@@ -135,13 +147,19 @@ Everything above, plus:
 
 **Items.** Use the **Give an item** form on the campaign page to give an item to any player character or NPC.
 
+**Campaign compendium.** **COMPENDIUM** on the campaign page picks one of your compendiums for the campaign. Every QM of the campaign can use it, but only you (its owner) can change it, and players never see it.
+- **ADD MOBS**: pick a mob and how many (1 to 20). Each copy is a hidden NPC named after the mob with a number ("Goblin 1", "Goblin 2"...; the numbers carry on from any already in the campaign), with its talents, proficiencies and stats rolled within their ranges and its drops rolled.
+- **GIVE ITEM**: give a compendium item to any player character or NPC. The player gets it like any other gift.
+- **OPEN** shows the compendium itself.
+- A mob NPC made this way says on its INFO tab where it came from. **UPDATE FROM COMPENDIUM** there (tap twice) takes the mob's current version, rolling its ranges again, but keeps the NPC's name, damage, tokens and items.
+
 **Spawn Character.** **SPAWN CHARACTER** runs the turn-based character creation from the rulebook. Choose who the character is for (tick players, or none for an NPC), and everyone in the campaign is taken to the spawn page. Players take turns choosing a description, an ability, a fighting style, a weapon, a backstory and a motivation, then everyone adjusts talents and skills together. You can **SEND BACK ONE STEP** to veto a choice or **CANCEL SPAWN**. When it finishes, the new owner fills in a **Describe Your Character** card.
 
 **Maps.** **CREATE ENCOUNTER MAP** takes a name and a picture, then you fit the grid (square size, X/Y position, columns and rows, or **FILL THE PICTURE**). Maps start hidden. Use **SHOW TO PLAYERS / HIDE FROM PLAYERS** to reveal them.
 
 ## 7. Options and tips
 
-- **NOTES** (on the home screen, and at the top right of the rulebook and this guide) holds pages of your own notes. Each page has a title, an optional campaign and free text, and saves as you type.
+- **NOTES** (at the top of every screen once you are logged in, and on the home screen) holds pages of your own notes. Each page has a title, an optional campaign and free text, and saves as you type.
 - **WARNING: notes are stored only in this browser, on this device.** They are not in your account and do not sync. Clearing the site data, reinstalling the app or switching browsers or devices loses them. Back them up regularly: **BACK UP NOTES** downloads a file (keep it somewhere safe, such as cloud storage or email to yourself). **RESTORE NOTES** loads such a file again, adding any pages you do not already have. The Notes page shows when you last backed up.
 - **OPTIONS** changes text size and color. These settings stay on the device you set them on.
 - Campaign screens refresh about every 5 seconds, so a change by another player may take a moment to appear.
