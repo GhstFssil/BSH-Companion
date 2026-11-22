@@ -1,12 +1,11 @@
 # Handoff
-Last updated 2026-11-22 (evening). Overwrite each time; keep under 40 lines. Change record: HISTORY.md (don't read unless asked).
+Last updated 2026-11-22 (evening, after publishing version 3). Overwrite each time; keep under 40 lines. Change record: HISTORY.md (don't read unless asked).
 
 ## Goal
 BLOODSOUP HELL Companion: one PWA for Ricky's homemade tabletop RPG, with Supabase accounts, campaigns, encounters and NPCs.
 
 ## Done
-- Version 2 published 2026-11-21 (cache `bloodsoup-v58`).
-- On `next` (unpublished; full suite incl. slow files passing; **database changed**, so `campaigns.sql` must be re-run when it ships):
+- Version 3 published 2026-11-22 (cache `bloodsoup-v59`). Ricky must re-run `supabase/campaigns.sql` (compendiums, `give_item` cref). Contents:
   - Attack lists, the Load action, QM item editing (see README "Attacks, loading, and QM item changes").
   - **Compendiums** (README "Compendiums"): home > COMPENDIUM; items, mobs (± ranges on talents/proficiencies, stat variation %, DROPS with chance and min-max), abilities, attacks, custom actions; export/import; FROM COMPENDIUM on sheets; UPDATE FROM COMPENDIUM on copies; campaign compendium (QM: ADD MOBS "Goblin 1, 2...", GIVE ITEM; co-QMs read only; players never see it).
   - RULES / GUIDE / NOTES together at the top of every screen (second row on phones).
@@ -26,12 +25,12 @@ BLOODSOUP HELL Companion: one PWA for Ricky's homemade tabletop RPG, with Supaba
   - Players can use their own compendiums on their own sheets. QMs still can't add abilities to players' sheets (items only, as before).
   - Any QM may switch the campaign to their own compendium or none. Limits: 5 MB, 500 items, 200 mobs, 300 of each other kind.
   - An imported compendium is new: copies made from the original don't link to it.
+- `main` now has a CNAME (bsh-companion.theunassumingtavern.dev) added by Ricky.
 - Earlier unreviewed assumptions (loading, combos, tokens, codex, mobs) are unchanged; see the version 2 notes in README and the previous handoff in HISTORY.
 
 ## Next steps
-1. Ask Ricky to try compendiums (making a mob, ADD MOBS, GIVE ITEM, UPDATE) and the top bar on his phone; review the assumptions above.
-2. When he says publish: merge `main` into `next`, bump to version 3 / cache `bloodsoup-v59`, push to `main`, tell him to re-run `campaigns.sql`.
-3. BACKLOG.md: Tracks (mechanics for all abilities) and the not-automated token details.
+1. Confirm Ricky re-ran `campaigns.sql`; ask him to try compendiums (making a mob, ADD MOBS, GIVE ITEM, UPDATE) and the top bar on his phone; review the assumptions above.
+2. BACKLOG.md: Tracks (mechanics for all abilities) and the not-automated token details.
 
 ## Gotchas
 - Tests that use weapon attacks must put the weapon in a hand (`eqR: true`).
