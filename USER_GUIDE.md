@@ -24,6 +24,7 @@ After logging in, tap **ENTER THE RING** on the title page to reach the home scr
 | **CAMPAIGNS** | Campaigns you belong to |
 | **CREATE CAMPAIGN** | Start a new campaign (you become its QM) |
 | **JOIN CAMPAIGN** | Join a campaign that already exists |
+| **NOTES** | Your own notes pages (saved on this device only; see the warning in section 7) |
 | **OPTIONS** | Text size and color (saved on this device only) |
 
 The **RULES** button stays at the top center of every screen.
@@ -49,6 +50,8 @@ Sheets save automatically. The sheet has nine tabs:
 
 **Item buffs.** Each item has an ITEM BUFFS card: pick a talent or skill, enter an amount (negatives allowed), then tick **Hold** (active while in a hand) and/or **Wear** (active on the body). If neither is ticked, the buff is active whenever you carry the item.
 
+**Comparing characters.** **COMPARE** on the Characters page lists your characters and everyone you can see in your campaigns (a private NPC sheet is not shown). Tick two to four and the app lays their stats and skills side by side, highlighting the highest value in each row. Weight Class is never highlighted, since lower can be better.
+
 **Sharing a sheet.** **EXPORT SHEET** at the top of a sheet downloads it as a file. Anyone can load it with IMPORT CHARACTER as a new character of their own.
 
 **Deleting.** DELETE CHARACTER is at the bottom of the sheet. Each destructive button needs a second tap to confirm.
@@ -65,6 +68,7 @@ A campaign is your group. Whoever creates it is its **QM** (the game master role
 - The member list, with each character's **HP, AP, SP and EP**. Your own characters are editable here too. Other people's are read-only.
 - **SKILL CHECK** on any of your characters. Pick a skill, then **ROLL D20** or type your own roll and tap **SET ROLL**. A natural 1 takes off 5 and a natural 20 adds 5. Only the person rolling sees the result.
 - **Actions > Rest** for the five rests from the rulebook. Tap **TAKE**, roll the dice (or type your own numbers), then **APPLY REST**. Bleed and Wound tokens and rest cooldowns are shown in the text but not tracked by the app.
+- **DEAD** and **INACTIVE** tabs on the right edge (they appear only when someone belongs there). A character whose Alive box is unticked goes to DEAD. The QM can move any character to INACTIVE with **MARK INACTIVE** on its row, and back with **MAKE ACTIVE**. Characters on these lists leave the main list, but you can still open them. Someone already in the running encounter stays on the main list until it ends.
 - **VIEW ENCOUNTER MAPS**.
 - **LEAVE CAMPAIGN**, or **BECOME A PLAYER** if you are a QM and want to step down. Both need a second tap.
 
@@ -127,6 +131,8 @@ Everything above, plus:
 
 ## 7. Options and tips
 
+- **NOTES** (on the home screen, and at the top right of the rulebook and this guide) holds pages of your own notes. Each page has a title, an optional campaign and free text, and saves as you type.
+- **WARNING: notes are stored only in this browser, on this device.** They are not in your account and do not sync. Clearing the site data, reinstalling the app or switching browsers or devices loses them. Back them up regularly: **BACK UP NOTES** downloads a file (keep it somewhere safe, such as cloud storage or email to yourself). **RESTORE NOTES** loads such a file again, adding any pages you do not already have. The Notes page shows when you last backed up.
 - **OPTIONS** changes text size and color. These settings stay on the device you set them on.
 - Campaign screens refresh about every 5 seconds, so a change by another player may take a moment to appear.
 - If the app seems out of date after an update, close it fully and reopen it. The version number is at the bottom of the title page.

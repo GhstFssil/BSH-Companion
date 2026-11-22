@@ -82,9 +82,9 @@
   html.on-rules, body.on-rules { background: #2b2b2b; }
   body.on-rules .corner { background: #2b2b2b; color: var(--ink-input); border-color: var(--ink-input); }
   body.on-rules .corner:hover, body.on-rules .corner:focus-visible { background: var(--ink-input); color: #1c1c1c; }
-  #screen-rules, #screen-guide { --r-ink: var(--ink-input); --r-bright: var(--ink-input); align-items: stretch; margin: 0; padding: 4.2rem 0 3rem; width: min(100%, 52rem); }
+  #screen-rules, #screen-guide, #screen-notes { --r-ink: var(--ink-input); --r-bright: var(--ink-input); align-items: stretch; margin: 0; padding: 4.2rem 0 3rem; width: min(100%, 52rem); }
   @supports (color: color-mix(in srgb, red, white)) {
-    #screen-rules, #screen-guide { --r-ink: color-mix(in srgb, var(--ink-input) 70%, #fff); --r-bright: color-mix(in srgb, var(--ink-input) 45%, #fff); }
+    #screen-rules, #screen-guide, #screen-notes { --r-ink: color-mix(in srgb, var(--ink-input) 70%, #fff); --r-bright: color-mix(in srgb, var(--ink-input) 45%, #fff); }
   }
   .rules-doc { color: var(--r-ink); font-family: var(--mono); font-size: max(8px, calc(1rem + var(--fs))); line-height: 1.6; text-align: left; overflow-wrap: anywhere; }
   .rules-doc p { margin: 0 0 .85rem; }
@@ -213,6 +213,20 @@
   .edge-tab.left { left: 0; border-left: 0; border-radius: 0 .5rem .5rem 0; }
   .edge-tab.right { right: 0; border-right: 0; border-radius: .5rem 0 0 .5rem; }
   .edge-tab[hidden] { display: none; }
+  .edge-tab.low { top: 62%; }
+  .cmp-wrap { overflow-x: auto; width: 100%; margin-top: .6rem; }
+  .cmp { border-collapse: collapse; min-width: 100%; }
+  .cmp th, .cmp td { border: 2px solid var(--ink); padding: .35rem .5rem; text-align: center; }
+  .cmp th:first-child, .cmp td:first-child { text-align: left; position: sticky; left: 0; background: var(--bg, #000); }
+  .cmp tr.sec th { text-align: left; letter-spacing: .1em; }
+  .cmp td.best { background: var(--ink); color: #000; font-weight: bold; }
+  .notes-doc { padding: 0 1rem; display: flex; flex-direction: column; gap: .6rem; }
+  .notes-doc .warn { border: 2px solid var(--r-bright); padding: .6rem .7rem; margin: 0; }
+  .notes-doc .notes-acts { display: flex; flex-wrap: wrap; gap: .4rem; }
+  .notes-doc textarea { min-height: 14rem; width: 100%; }
+  .notes-doc input[type=text], .notes-doc select { width: 100%; }
+  .char-side { position: fixed; top: 0; right: 0; bottom: 0; width: min(88vw, 22rem); z-index: 30; background: #000; border-left: 2px solid var(--ink); padding: 3.6rem .8rem 1rem; overflow-y: auto; }
+  .char-side[hidden] { display: none; }
   .map-stage { position: relative; width: 100%; line-height: 0; }
   .map-stage img { display: block; width: 100%; height: auto; user-select: none; -webkit-user-drag: none; }
   .map-stage .map-grid { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; }
@@ -390,6 +404,7 @@
   <!-- Shown only while logged in, on every screen -->
   <button class="btn small corner center" id="rulesBtn" type="button" data-go="rules"><span class="px" data-px="RULES"></span></button>
   <button class="btn small corner center" id="guideBtn" type="button" data-go="guide" hidden><span class="px" data-px="GUIDE"></span></button>
+  <button class="btn small corner right" id="notesBtn" type="button" data-go="notes" hidden><span class="px" data-px="NOTES"></span></button>
   <button class="btn small corner right" id="logoutBtn" type="button" hidden><span class="px" data-px="LOG OUT"></span></button>
 
   <!-- LOADING (shown while the saved session is restored) -->
@@ -496,6 +511,12 @@
     <article class="rules-doc" id="rulesDoc" aria-label="Rulebook"></article>
   </section>
 
+  <!-- NOTES (same look as the rulebook; kept on this device only) -->
+  <section class="screen" id="screen-notes" hidden>
+    <button class="btn small corner left" type="button" id="notesBack"><span class="px" data-px="< BACK"></span></button>
+    <article class="rules-doc notes-doc" id="notesDoc" aria-label="Notes"></article>
+  </section>
+
   <!-- HOME (logged in) -->
   <!-- USER GUIDE (same look as the rulebook) -->
   <section class="screen" id="screen-guide" hidden>
@@ -513,6 +534,7 @@
       <button class="btn" type="button" data-go="create-campaign"><span data-px="CREATE CAMPAIGN"></span></button>
       <button class="btn" type="button" data-go="join-campaign"><span data-px="JOIN CAMPAIGN"></span></button>
       <button class="btn" type="button" data-go="guide"><span data-px="GUIDE"></span></button>
+      <button class="btn" type="button" data-go="notes"><span data-px="NOTES"></span></button>
       <button class="btn" type="button" data-go="options"><span data-px="OPTIONS"></span></button>
     </div>
   </section>
@@ -571,6 +593,13 @@
     <p class="save-status" id="campaignMeta"></p>
     <p class="msg" id="campaignMsg" role="alert"></p>
     <button class="edge-tab left" type="button" id="encMapTab" hidden aria-label="Show the encounter map"><span>MAP</span></button>
+    <button class="edge-tab right" type="button" id="deadTab" hidden aria-label="Show the dead characters"><span>DEAD</span></button>
+    <button class="edge-tab right low" type="button" id="inactiveTab" hidden aria-label="Show the inactive characters"><span>INACTIVE</span></button>
+    <aside class="char-side" id="charSide" hidden aria-label="Characters">
+      <h3 class="sec" id="charSideTitle"></h3>
+      <div class="members" id="charSideList"></div>
+      <button class="btn small" type="button" id="charSideClose">CLOSE</button>
+    </aside>
     <div class="enc-box" id="encounterBox"></div>
     <div class="enc-box" id="spawnBanner"></div>
     <div class="enc-box" id="attackWait"></div>
@@ -624,6 +653,7 @@
     <div class="stack">
       <button class="btn" id="newCharBtn" type="button"><span class="px" data-px="NEW CHARACTER"></span></button>
       <button class="btn" id="importCharBtn" type="button"><span class="px" data-px="IMPORT CHARACTER"></span></button>
+      <button class="btn" id="compareBtn" type="button" data-go="compare"><span class="px" data-px="COMPARE"></span></button>
       <input type="file" id="importFile" accept=".json,application/json" hidden aria-label="Character sheet file">
       <label class="fld" id="newNpcPick" hidden><span class="lbl">New NPC goes to campaign</span><select id="newNpcCamp" aria-label="Campaign for the new NPC"></select></label>
       <button class="btn" id="newNpcBtn" type="button" hidden><span class="px" data-px="NEW NPC"></span></button>
@@ -633,6 +663,16 @@
       <h3 class="lbl" id="npcHead" hidden>NPCs</h3>
       <div class="char-list" id="npcList"></div>
     </div>
+  </section>
+
+  <!-- COMPARE CHARACTERS -->
+  <section class="screen sheet" id="screen-compare" hidden>
+    <button class="btn small corner left" type="button" data-go="characters"><span class="px" data-px="< BACK"></span></button>
+    <h2 class="sheet-title">Compare Characters</h2>
+    <p class="msg" id="cmpMsg" role="alert"></p>
+    <p class="note">Pick 2 to 4 characters. In each row the highest value is highlighted (Weight Class is not, since lower can be better).</p>
+    <div class="members" id="cmpPick"></div>
+    <div class="cmp-wrap" id="cmpTable"></div>
   </section>
 
   <!-- CHARACTER SHEET -->

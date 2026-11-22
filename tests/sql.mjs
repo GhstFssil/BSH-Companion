@@ -279,6 +279,14 @@ ok(!(await as('ricky', `select resolve_attack($1,$2,5,'no block')`, [C, sb2.rows
 ok((await enc('sam')).lastAttack.text === 'no block' && !(await enc('sam')).attack, 'and it is posted and cleared');
 ok(err(await as('ava', `select start_attack($1,$2,1,1,'x')`, [pcSam, pcAva]), /your own characters/), "cannot start an attack with someone else's character");
 ok((await as('ricky', `select end_encounter($1)`, [C])).error === undefined, 'block: end');
+// Inactive characters: QM only, must be in the campaign, stored on the campaign
+{ const inact = async () => (await as('ricky', `select inactive_ids from campaigns where id=$1`, [C])).rows[0].inactive_ids || [];
+  ok(err(await as('sam', `select set_character_inactive($1,$2,true)`, [C, pcAva]), /Only a QM/), 'inactive: a player cannot');
+  ok(err(await as('ricky', `select set_character_inactive($1,$2,true)`, [C, uuid()]), /not in this campaign/), 'inactive: must be in the campaign');
+  ok(!(await as('ricky', `select set_character_inactive($1,$2,true)`, [C, pcAva])).error && (await inact()).includes(pcAva), 'inactive: QM marks a character');
+  await as('ricky', `select set_character_inactive($1,$2,true)`, [C, pcAva]);
+  ok((await inact()).filter((x) => x === pcAva).length === 1, 'inactive: marking twice keeps one entry');
+  ok(!(await as('ricky', `select set_character_inactive($1,$2,false)`, [C, pcAva])).error && !(await inact()).includes(pcAva), 'inactive: QM sets it active again'); }
 // QM damage (manual): QM only, any character in the campaign, no encounter needed
 { const d0 = await dmgOf(pcAva);
   ok(err(await as('sam', `select qm_deal_damage($1,$2,3)`, [C, pcAva]), /Only a QM/), 'qm damage: a player cannot');

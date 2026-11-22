@@ -6,7 +6,7 @@ const E = require('../engine.js');
   await A.signUp();
   ok(A.vis().join() === 'home', 'signed up, on landing page');
   const labels = [...A.d.querySelectorAll('#screen-home .stack .btn')].map((b) => b.querySelector('[data-px]').dataset.px);
-  ok(labels.join() === 'CHARACTERS,CAMPAIGNS,CREATE CAMPAIGN,JOIN CAMPAIGN,GUIDE,OPTIONS', 'landing buttons: ' + labels.join(' / '));
+  ok(labels.join() === 'CHARACTERS,CAMPAIGNS,CREATE CAMPAIGN,JOIN CAMPAIGN,GUIDE,NOTES,OPTIONS', 'landing buttons: ' + labels.join(' / '));
   const startBtns = () => [...A.d.querySelectorAll('#screen-start .btn')].filter((b) => !b.hidden && b.querySelector('[data-px]')).map((b) => b.querySelector('[data-px]').dataset.px);
   const titleBtn = A.d.querySelector('#screen-home [data-go="start"]');
   ok(!!titleBtn && titleBtn.classList.contains('corner') && titleBtn.classList.contains('left') && titleBtn.querySelector('[data-px]').dataset.px === 'TITLE', 'landing page has a TITLE button where Back would be');

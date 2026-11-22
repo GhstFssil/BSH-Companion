@@ -25,7 +25,7 @@
  *             setCombo(leaderId, finisherId, skill, level, total, text), cancelCombo(leaderId), comboLeaderAttack(campaignId, attackId, total, power, text),
  *             cancelComboAttack(campaignId, attackId)   (Combo Attacks: encounter.combos[leaderId] waits for the Finisher's turn; the attack then carries `combo`)
  *             setExplodeTokens(charId, 0..10)   (spend or hand out Explode Tokens; the owner, or a QM of the character's campaign),
- *             dealDamage(attackerId, targetId, amount)   (an attack during an encounter adds damage taken to the target), qmDealDamage(campaignId, targetId, amount)   (a QM adds damage taken to any character in their campaign, in or out of an encounter),
+ *             dealDamage(attackerId, targetId, amount)   (an attack during an encounter adds damage taken to the target), qmDealDamage(campaignId, targetId, amount)   (a QM adds damage taken to any character in their campaign, in or out of an encounter), setCharacterInactive(campaignId, charId, bool)   (QM only; campaign.inactive lists the ids),
  *             setVital(charId, 'apRemaining'|'spRemaining', value)   (spend points during an encounter; owner or QM),
  *             startTurn(charId, spGain, spMax, apMax?) -> {applied, ...}     (AP back to full, SP +spGain unless AP was 0; once per turn change)
  *             (listCampaigns rows carry `encounter`: null, or { id, startedAt, round, turn, moved, initiatives: { charId: {die, ib, total, tb, by} } })
@@ -197,7 +197,7 @@
       // Returns every campaign: { id, name, createdBy, createdAt, members: [{userId, username, name, role}] }
       async listCampaigns() {
         const [g, m, p, ev] = await Promise.all([
-          sb.from('campaigns').select('id,name,created_by,created_at,encounter,spawn').order('created_at', { ascending: false }),
+          sb.from('campaigns').select('id,name,created_by,created_at,encounter,spawn,inactive_ids').order('created_at', { ascending: false }),
           sb.from('campaign_members').select('campaign_id,user_id,role,joined_at'),
           sb.from('profiles').select('id,username,name'),
           sb.from('encounter_events').select('id,campaign_id,name,visible,total,tb,one_time,round')   // the database only returns what you may see
@@ -217,7 +217,7 @@
           id: r.id, name: r.name, createdBy: r.created_by, createdAt: r.created_at,
           encounter: r.encounter ? Object.assign({}, r.encounter, { events: (ev.data || []).filter((e) => e.campaign_id === r.id)
             .map((e) => ({ id: e.id, name: e.name, visible: !!e.visible, total: Number(e.total), tb: Number(e.tb), oneTime: !!e.one_time, round: e.round })) }) : null,
-          spawn: r.spawn || null,
+          spawn: r.spawn || null, inactive: r.inactive_ids || [],
           members: sortMembers(byCampaign[r.id] || [])
         }));
       },
@@ -486,6 +486,10 @@
         const { error } = await sb.rpc('deal_damage', { p_attacker: attackerId, p_target: targetId, p_amount: amount });
         if (error) throw friendly(error, 'Could not apply the attack.');
       },
+      async setCharacterInactive(campaignId, characterId, inactive) {
+        const { error } = await sb.rpc('set_character_inactive', { p_campaign: campaignId, p_character: characterId, p_inactive: !!inactive });
+        if (error) throw friendly(error, 'Could not change that.');
+      },
       async qmDealDamage(campaignId, targetId, amount) {
         const { error } = await sb.rpc('qm_deal_damage', { p_campaign: campaignId, p_target: targetId, p_amount: amount });
         if (error) throw friendly(error, 'Could not apply the damage.');
@@ -640,7 +644,7 @@
         return rd(GR, []).map((g) => ({
           id: g.id, name: g.name, createdBy: g.createdBy, createdAt: g.createdAt,
           encounter: g.encounter ? Object.assign({}, g.encounter, { tokens: undefined, events: (g.encounter.events || []).filter((e) => e.visible || isQmOf(g, uid)) }) : null,
-          spawn: g.spawn || null,
+          spawn: g.spawn || null, inactive: g.inactive || [],
           members: sortMembers(g.members.map((m) => {
             const a = accounts[m.userId] || {};
             return { userId: m.userId, username: a.username || '?', name: a.name || '', role: m.role, joinedAt: m.joinedAt };
@@ -1058,6 +1062,16 @@
         v.damage = Math.round(((Number(v.damage) || 0) + amount) * 100) / 100;
         t.c.vitals = v;
         wr(CH(t.email), t.list);
+      },
+      async setCharacterInactive(campaignId, characterId, inactive) {
+        const camps = rd(GR, []), g = camps.find((x) => x.id === campaignId);
+        if (!g || !isQmOf(g, uid)) throw fail('Only a QM can do that.');
+        const t = localFind(characterId);
+        if (!t || t.c.campaignId !== campaignId) throw fail('That character is not in this campaign.');
+        const ids = (g.inactive || []).filter((x) => x !== characterId);
+        if (inactive) ids.push(characterId);
+        g.inactive = ids;
+        wr(GR, camps);
       },
       async qmDealDamage(campaignId, targetId, amount) {
         if (typeof amount !== 'number' || !isFinite(amount) || amount < 0 || amount > 100000) throw fail('That number is not valid.');

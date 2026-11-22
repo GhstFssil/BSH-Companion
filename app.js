@@ -148,8 +148,8 @@
   }
 
   /* ================= Routing ================= */
-  const SCREENS = ['loading', 'start', 'rules', 'guide', 'login', 'forgot', 'reset', 'create', 'home', 'options', 'campaigns', 'createcampaign', 'joincampaign', 'campaign', 'spawn', 'maps', 'mapedit', 'mapview', 'characters', 'sheet'];
-  const LOGGED_IN_ONLY = ['home', 'options', 'campaigns', 'createcampaign', 'joincampaign', 'campaign', 'spawn', 'maps', 'mapedit', 'mapview', 'characters', 'sheet'];
+  const SCREENS = ['loading', 'start', 'rules', 'guide', 'notes', 'compare', 'login', 'forgot', 'reset', 'create', 'home', 'options', 'campaigns', 'createcampaign', 'joincampaign', 'campaign', 'spawn', 'maps', 'mapedit', 'mapview', 'characters', 'sheet'];
+  const LOGGED_IN_ONLY = ['notes', 'compare', 'home', 'options', 'campaigns', 'createcampaign', 'joincampaign', 'campaign', 'spawn', 'maps', 'mapedit', 'mapview', 'characters', 'sheet'];
   const ROUTE_SCREEN = { 'campaigns': 'campaigns', 'create-campaign': 'createcampaign', 'join-campaign': 'joincampaign' };
 
   const loginUser = $('loginUser'), loginPass = $('loginPass'), loginBtn = $('loginBtn'), loginMsg = $('loginMsg');
@@ -196,8 +196,9 @@
   };
   $('rulesDoc').addEventListener('click', docClick);
   $('guideDoc').addEventListener('click', docClick);
-  const docBack = () => go(lastRoute && lastRoute !== 'rules' && lastRoute !== 'guide' ? lastRoute : state.user ? 'home' : 'start');
+  const docBack = () => go(lastRoute && lastRoute !== 'rules' && lastRoute !== 'guide' && lastRoute !== 'notes' ? lastRoute : state.user ? 'home' : 'start');
   $('rulesBack').addEventListener('click', docBack);
+  $('notesBack').addEventListener('click', docBack);
   $('guideBack').addEventListener('click', docBack);
 
   function go(name) { location.hash = name; }
@@ -219,7 +220,7 @@
     else if (raw.startsWith('mapview-')) { name = 'mapview'; [mapCid, mapViewId] = raw.slice(8).split('~'); }
     else if (raw.startsWith('spawnsheet-')) { name = 'sheet'; spawnSheetFor = raw.slice('spawnsheet-'.length); }
     else if (Object.prototype.hasOwnProperty.call(ROUTE_SCREEN, raw)) name = ROUTE_SCREEN[raw];
-    const known = ['start', 'rules', 'guide', 'login', 'forgot', 'reset', 'create', 'home', 'options', 'campaigns', 'createcampaign', 'joincampaign', 'campaign', 'spawn', 'maps', 'mapedit', 'mapview', 'characters', 'sheet'].includes(name);
+    const known = ['start', 'rules', 'guide', 'notes', 'compare', 'login', 'forgot', 'reset', 'create', 'home', 'options', 'campaigns', 'createcampaign', 'joincampaign', 'campaign', 'spawn', 'maps', 'mapedit', 'mapview', 'characters', 'sheet'].includes(name);
     if (!known) name = 'start';
 
     const user = state.user;
@@ -249,15 +250,16 @@
     if (screen === 'spawn') spawnCampaignId = campaignId;
     curCampaignId = screen === 'campaign' ? campaignId : curCampaignId && screen === 'sheet' ? curCampaignId : null;
     SCREENS.forEach((s) => { $('screen-' + s).hidden = s !== screen; });
-    if (screen !== 'rules' && screen !== 'guide') {
+    if (screen !== 'rules' && screen !== 'guide' && screen !== 'notes') {
       const prev = lastRoute;
       lastRoute = location.hash.replace('#', '') || 'start';
       // where a sheet's BACK goes: the campaign page if that is where you came from (kept while you stay on the sheet)
       if (screen === 'sheet') { if (/^campaign-/.test(prev)) sheetBack = prev; else if (!/^character-/.test(prev)) sheetBack = null; }
     }
-    const onDoc = screen === 'rules' || screen === 'guide';   // the rulebook and the user guide share one look
+    const onDoc = screen === 'rules' || screen === 'guide' || screen === 'notes';   // the rulebook, the user guide and the notes share one look
     document.documentElement.classList.toggle('on-rules', onDoc); document.body.classList.toggle('on-rules', onDoc);
     $('rulesBtn').hidden = screen === 'rules';
+    $('notesBtn').hidden = !user || !onDoc || screen === 'notes';   // on the rulebook and the guide, NOTES sits where LOG OUT is elsewhere
     $('guideBtn').hidden = screen !== 'rules';   // on the rulebook, GUIDE sits where RULES is everywhere else
     logoutBtn.hidden = !user || screen === 'start' || onDoc;   // the title screen has its own LOG OUT
     document.querySelectorAll('#screen-start [data-auth]').forEach((b) => { b.hidden = (b.dataset.auth === 'in') !== !!user; });
@@ -281,6 +283,8 @@
     if (screen === 'options') renderOptions();
     if (screen === 'rules') renderRules();
     if (screen === 'guide') renderGuide();
+    if (screen === 'notes') renderNotes();
+    if (screen === 'compare') openCompare();
     if (['campaigns', 'joincampaign', 'campaign'].includes(screen)) { renderCampaigns(); refreshCampaigns(); }
     if (screen === 'spawn') { spawnSig = ''; renderSpawnPage(); refreshCampaigns(); }
     if (screen === 'maps') renderMapList();
@@ -633,6 +637,31 @@
   }
 
   let encTimer = null;
+  // DEAD and INACTIVE side lists on the campaign page (right-edge tabs). Only a QM can set a character inactive or active again.
+  let charSideOpen = null, charSideData = null;
+  function renderCharSide(g, qm, dead, inactive) {
+    charSideData = { g, qm, dead, inactive };
+    $('deadTab').hidden = !dead.length; $('inactiveTab').hidden = !inactive.length;
+    if (charSideOpen && !(charSideOpen === 'dead' ? dead : inactive).length) charSideOpen = null;
+    paintCharSide();
+  }
+  function paintCharSide() {
+    const box = $('charSide'); box.hidden = !charSideOpen;
+    if (!charSideOpen || !charSideData) return;
+    const { g, qm } = charSideData, list = charSideOpen === 'dead' ? charSideData.dead : charSideData.inactive;
+    $('charSideTitle').textContent = charSideOpen === 'dead' ? 'Dead' : 'Inactive';
+    $('charSideList').replaceChildren(...list.map((r) => {
+      const c = r.ch, locked = !!r.stub, sub = [c.isNpc ? 'NPC of ' + r.owner : 'player ' + r.owner];
+      return h('div', { class: 'member cchar' },
+        h('div', { class: 'cname' }, h('button', { class: 'btn char-btn', type: 'button', disabled: locked, onclick: () => { if (!locked) go('character-' + c.id); } },
+          h('span', { text: c.info.name || 'Unnamed character' }), h('span', { class: 'sub', text: sub.join(' · ') }))),
+        charSideOpen === 'inactive' && qm ? h('button', { class: 'btn small', type: 'button', text: 'MAKE ACTIVE', onclick: () => campaignAction(() => backend.setCharacterInactive(g.id, c.id, false)) }) : null);
+    }));
+  }
+  $('deadTab').addEventListener('click', () => { charSideOpen = charSideOpen === 'dead' ? null : 'dead'; paintCharSide(); });
+  $('inactiveTab').addEventListener('click', () => { charSideOpen = charSideOpen === 'inactive' ? null : 'inactive'; paintCharSide(); });
+  $('charSideClose').addEventListener('click', () => { charSideOpen = null; paintCharSide(); });
+
   function renderCampaignChars(g, me, qm) {
     const box = $('campChars'), head = $('campCharsHead'), none = $('noCampChars'), npcBar = $('npcActions');
     npcBar.replaceChildren();
@@ -640,9 +669,14 @@
     if (!me) { box.replaceChildren(); head.hidden = true; none.hidden = true; renderGiveBox(g, false, []); return; }
     head.hidden = false;
     const enc = g.encounter, inits = enc ? enc.initiatives : {};
-    const rows = state.campCharsFor === g.id ? state.campChars : [];
-    renderGiveBox(g, qm, rows.slice().sort((a, b) => (a.ch.isNpc - b.ch.isNpc) || (a.ch.info.name || '').localeCompare(b.ch.info.name || '')));
-    none.hidden = state.campCharsFor !== g.id || rows.length > 0;
+    const allRows = state.campCharsFor === g.id ? state.campChars : [];
+    // dead and inactive characters leave the roster for the side lists (unless they are still part of the running encounter)
+    const inactiveSet = new Set(g.inactive || []), isDead = (r) => !r.stub && r.ch.info && r.ch.info.alive === false;
+    const away = (r) => (isDead(r) || inactiveSet.has(r.ch.id)) && !(enc && inits && inits[r.ch.id]);
+    const rows = allRows.filter((r) => !away(r));
+    renderCharSide(g, qm, allRows.filter((r) => away(r) && isDead(r)), allRows.filter((r) => away(r) && !isDead(r)));
+    renderGiveBox(g, qm, allRows.slice().sort((a, b) => (a.ch.isNpc - b.ch.isNpc) || (a.ch.info.name || '').localeCompare(b.ch.info.name || '')));
+    none.hidden = state.campCharsFor !== g.id || allRows.length > 0;
     const kept = {};   // what the QM has typed in an initiative box survives a refresh
     box.querySelectorAll('input[data-init]').forEach((i) => { kept[i.dataset.init] = i.value; });
     const ae = document.activeElement, focusVit = ae && ae.dataset && ae.dataset.vit && box.contains(ae) ? ae.dataset.vit : null;
@@ -690,6 +724,7 @@
         onclick: () => campaignAction(() => backend.advanceTurn(g.id, c.id)).then(() => pollCampaigns(true)) }));
       if (!locked) row.append(h('button', { class: 'btn small', type: 'button', text: 'SKILL CHECK', onclick: () => openSkillCheck(c) }),
         h('button', { class: 'btn small', type: 'button', text: 'ACTIONS', onclick: () => openActions(c, r.mine && !!findChar(c.id)) }));
+      if (qm) row.append(h('button', { class: 'btn small', type: 'button', text: 'MARK INACTIVE', onclick: () => campaignAction(() => backend.setCharacterInactive(g.id, c.id, true)) }));
       if (i) row.append(h('p', { class: 'note', style: 'flex:1 1 100%;text-align:left;margin:0', text: initText(i) + (i.by === 'qm' && !c.isNpc ? ' (set by the QM)' : '') }));
       // the QM can roll or enter initiative for a player who has not answered in 10 seconds (NPCs: any time)
       if (enc && qm && !i) {
@@ -2728,6 +2763,142 @@
     };
     rd.readAsText(f);
   });
+
+  /* ================= Compare characters ================= */
+  // Up to four characters side by side: your own, plus everyone you can see in your campaigns (a private NPC sheet is not offered).
+  let cmpPool = [], cmpPick = [], cmpSeq = 0;
+  const CMP_MAX = 4;
+  function cmpLabel(e) { return (e.ch.info.name || 'Unnamed character') + (e.tag ? '  (' + e.tag + ')' : ''); }
+  async function openCompare() {
+    const seq = ++cmpSeq;
+    cmpPick = []; $('cmpMsg').textContent = '';
+    cmpPool = state.chars.map((c) => ({ ch: c, tag: 'yours' + (c.campaignId && campaignName(c.campaignId) ? ', ' + campaignName(c.campaignId) : '') }));
+    paintCompare();
+    const seen = new Set(cmpPool.map((e) => e.ch.id));
+    for (const g of state.campaigns.filter((x) => myMembership(x))) {
+      try {
+        const rows = await backend.listCampaignCharacters(g.id);
+        if (seq !== cmpSeq) return;
+        rows.forEach((r) => {
+          if (r.stub || seen.has(r.ch.id)) return;
+          seen.add(r.ch.id);
+          cmpPool.push({ ch: normalizeChar(r.ch), tag: (r.ch.isNpc ? 'NPC' : 'player ' + r.owner) + ', ' + g.name });
+        });
+      } catch (e) { if (seq === cmpSeq) $('cmpMsg').textContent = 'Could not load every campaign\'s characters. ' + e.message; }
+    }
+    if (seq === cmpSeq) paintCompare();
+  }
+  function paintCompare() {
+    const full = cmpPick.length >= CMP_MAX;
+    $('cmpPick').replaceChildren(...(cmpPool.length ? cmpPool.map((e) => {
+      const cb = h('input', { type: 'checkbox', 'aria-label': cmpLabel(e), 'data-cmp': e.ch.id }); cb.checked = cmpPick.includes(e.ch.id); cb.disabled = full && !cb.checked;
+      cb.addEventListener('change', () => { cmpPick = cb.checked ? cmpPick.concat(e.ch.id).slice(0, CMP_MAX) : cmpPick.filter((x) => x !== e.ch.id); paintCompare(); });
+      return h('label', { class: 'fld inline' }, cb, h('span', { text: cmpLabel(e) }));
+    }) : [h('p', { class: 'note', text: 'No characters yet.' })]));
+    const picked = cmpPick.map((id) => cmpPool.find((e) => e.ch.id === id)).filter(Boolean);
+    if (picked.length < 2) { $('cmpTable').replaceChildren(h('p', { class: 'note', text: picked.length ? 'Pick at least one more character.' : '' })); return; }
+    const res = picked.map((e) => BSH.compute(e.ch));
+    const row = (label, vals, best = true) => {
+      const nums = vals.map((v) => v.n), top = Math.max(...nums), hit = best && nums.some((n) => n !== top);
+      return h('tr', {}, h('th', { scope: 'row', text: label }), ...vals.map((v, i) => h('td', { class: hit && nums[i] === top ? 'best' : '', text: v.text })));
+    };
+    const cell = (n, text) => ({ n, text });
+    const stats = BSH.STATS.map((s, i) => row(s.name + ' (' + s.key + ')', res.map((r) => cell(r.stat[i], fmt(r.stat[i]))), s.key !== 'WC'));
+    const skills = BSH.SKILLS.map((s, i) => row(s.name, res.map((r) => cell(r.skillMod[i], signed(r.skillMod[i])))));
+    const secRow = (t) => h('tr', { class: 'sec' }, h('th', { colspan: String(picked.length + 1), text: t }));
+    $('cmpTable').replaceChildren(h('table', { class: 'cmp', id: 'cmpGrid' },
+      h('thead', {}, h('tr', {}, h('th', { text: '' }), ...picked.map((e) => h('th', { scope: 'col', text: e.ch.info.name || 'Unnamed character' })))),
+      h('tbody', {}, secRow('Stats'), ...stats, secRow('Skills'), ...skills)));
+  }
+
+  /* ================= Notes (kept in this browser only) ================= */
+  // Pages of free text, saved in localStorage for the logged-in account on this device. They are NOT in the database, so BACK UP NOTES
+  // downloads them as a file and RESTORE NOTES loads such a file again (pages already here are skipped; the rest are added).
+  const NOTES_FORMAT = 'bloodsoup-hell-notes';
+  const notesKey = () => 'bsh-notes-' + state.user.id, notesBackupKey = () => 'bsh-notes-backup-' + state.user.id;
+  let notes = [], noteId = null;
+  const cleanNote = (n) => n && typeof n === 'object' ? { id: typeof n.id === 'string' && n.id.length <= 64 ? n.id : uuid(), title: String(n.title == null ? '' : n.title).slice(0, 60),
+    text: String(n.text == null ? '' : n.text).slice(0, 20000), campaign: typeof n.campaign === 'string' ? n.campaign.slice(0, 64) : '',
+    campaignName: String(n.campaignName == null ? '' : n.campaignName).slice(0, 60), updated: Number(n.updated) || Date.now() } : null;
+  function loadNotes() {
+    try { const v = JSON.parse(localStorage.getItem(notesKey()) || '[]'); notes = Array.isArray(v) ? v.map(cleanNote).filter(Boolean).slice(0, 300) : []; } catch (e) { notes = []; }
+  }
+  const saveNotes = () => { try { localStorage.setItem(notesKey(), JSON.stringify(notes)); return true; } catch (e) { return false; } };
+  function renderNotes() {
+    loadNotes();
+    if (!notes.some((n) => n.id === noteId)) noteId = notes.length ? notes.slice().sort((a, b) => b.updated - a.updated)[0].id : null;
+    paintNotes('');
+  }
+  function paintNotes(msg) {
+    const n = notes.find((x) => x.id === noteId), when = (() => { try { return Number(localStorage.getItem(notesBackupKey())) || 0; } catch (e) { return 0; } })();
+    const status = h('p', { class: 'note', id: 'notesMsg', role: 'status', text: msg });
+    const fileIn = h('input', { type: 'file', id: 'notesFile', accept: '.json,application/json', 'aria-label': 'Notes backup file' }); fileIn.hidden = true;
+    const sel = h('select', { id: 'notesSel', 'aria-label': 'Page' }, notes.slice().sort((a, b) => b.updated - a.updated).map((x) =>
+      h('option', { value: x.id, text: (x.title || 'Untitled page') + (x.campaignName ? '  (' + x.campaignName + ')' : '') })));
+    if (n) sel.value = n.id;
+    sel.addEventListener('change', () => { noteId = sel.value; paintNotes(''); });
+    const kids = [
+      h('h1', { text: 'Notes' }),
+      h('p', { class: 'warn', id: 'notesWarn', text: 'These notes are saved only in this browser, on this device. They are not in your account, they do not sync to other devices, and they are lost if you clear the site data, reinstall the app or change browsers. Back them up regularly with BACK UP NOTES.' }),
+      h('p', { class: 'note', id: 'notesBackupInfo', text: when ? 'Last backup: ' + new Date(when).toLocaleString() : 'You have not backed these notes up yet.' }),
+      h('div', { class: 'notes-acts' },
+        h('button', { class: 'btn small', type: 'button', id: 'notesBackup', text: 'BACK UP NOTES', onclick: () => {
+          if (!notes.length) { status.textContent = 'There are no notes to back up yet.'; return; }
+          const day = new Date().toISOString().slice(0, 10);
+          downloadText('Bloodsoup_notes_' + day + '.bloodsoup-notes.json', JSON.stringify({ format: NOTES_FORMAT, version: 1, exported: new Date().toISOString(), notes }, null, 1));
+          try { localStorage.setItem(notesBackupKey(), String(Date.now())); } catch (e) { /* only the reminder is lost */ }
+          paintNotes('Backup downloaded (' + notes.length + (notes.length === 1 ? ' page' : ' pages') + '). Keep the file somewhere safe.');
+        } }),
+        h('button', { class: 'btn small', type: 'button', id: 'notesRestore', text: 'RESTORE NOTES', onclick: () => $('notesFile').click() }),
+        fileIn),
+      status];
+    $('notesDoc').replaceChildren(...kids, ...(notes.length ? [h('label', { class: 'fld' }, h('span', { class: 'lbl', text: 'Page' }), sel)] : []),
+      h('div', { class: 'notes-acts' }, h('button', { class: 'btn small', type: 'button', id: 'notesNew', text: 'NEW PAGE', onclick: () => {
+        const p = cleanNote({ id: uuid(), title: '', text: '', updated: Date.now() }); notes.unshift(p); noteId = p.id;
+        paintNotes(saveNotes() ? '' : 'Could not save: this browser is not allowing storage.');
+        $('notesTitle').focus({ preventScroll: true });
+      } })));
+    $('notesFile').addEventListener('change', onNotesFile);
+    if (!n) { $('notesDoc').append(h('p', { class: 'note', text: 'No pages yet. Tap NEW PAGE to start one.' })); return; }
+    const camps = state.campaigns.filter((g) => myMembership(g));
+    const save = () => { n.updated = Date.now(); status.textContent = saveNotes() ? 'Saved on this device.' : 'Could not save: this browser is not allowing storage.'; };
+    const title = h('input', { type: 'text', id: 'notesTitle', maxlength: '60', 'aria-label': 'Page title', placeholder: 'Page title' }); title.value = n.title;
+    title.addEventListener('input', () => { n.title = title.value; const o = sel.options[sel.selectedIndex]; if (o) o.textContent = (n.title || 'Untitled page') + (n.campaignName ? '  (' + n.campaignName + ')' : ''); save(); });
+    const camp = h('select', { id: 'notesCamp', 'aria-label': 'Campaign for this page' }, [h('option', { value: '', text: '(no campaign)' })]
+      .concat(camps.map((g) => h('option', { value: g.id, text: g.name })), n.campaign && !camps.some((g) => g.id === n.campaign) ? [h('option', { value: n.campaign, text: n.campaignName || 'Another campaign' })] : []));
+    camp.value = n.campaign;
+    camp.addEventListener('change', () => { n.campaign = camp.value; const g = camps.find((x) => x.id === camp.value); n.campaignName = g ? g.name : (camp.value ? n.campaignName : ''); save(); paintNotes('Saved on this device.'); });
+    const text = h('textarea', { id: 'notesText', 'aria-label': 'Notes', maxlength: '20000', placeholder: 'Write here...' }); text.value = n.text;
+    text.addEventListener('input', () => { n.text = text.value; save(); });
+    $('notesDoc').append(h('label', { class: 'fld' }, h('span', { class: 'lbl', text: 'Title' }), title), h('label', { class: 'fld' }, h('span', { class: 'lbl', text: 'Campaign (optional)' }), camp),
+      h('label', { class: 'fld' }, h('span', { class: 'lbl', text: 'Notes' }), text),
+      confirmButton('DELETE PAGE', 'TAP AGAIN TO DELETE', () => { notes = notes.filter((x) => x.id !== n.id); noteId = null; saveNotes(); renderNotes(); $('notesMsg').textContent = 'Page deleted.'; }));
+  }
+  function onNotesFile() {
+    const f = $('notesFile').files && $('notesFile').files[0]; $('notesFile').value = '';
+    const say = (m) => { const e = $('notesMsg'); if (e) e.textContent = m; };
+    if (!f) return;
+    if (f.size > 6000000) { say('That file is too big to be a notes backup.'); return; }
+    const rd = new FileReader();
+    rd.onerror = () => say('Could not read that file.');
+    rd.onload = () => {
+      try {
+        let raw; try { raw = JSON.parse(String(rd.result)); } catch (e) { throw new Error('That file is not a notes backup.'); }
+        if (!raw || raw.format !== NOTES_FORMAT || !Array.isArray(raw.notes)) throw new Error('That file is not a notes backup.');
+        let added = 0, same = 0;
+        raw.notes.slice(0, 300).map(cleanNote).filter(Boolean).forEach((p) => {
+          if (notes.some((x) => x.title === p.title && x.text === p.text)) { same++; return; }   // already here
+          if (notes.some((x) => x.id === p.id)) p.id = uuid();   // same id but different text: keep both
+          notes.push(p); added++;
+        });
+        if (notes.length > 300) notes = notes.sort((a, b) => b.updated - a.updated).slice(0, 300);
+        if (!saveNotes()) throw new Error('Could not save: this browser is not allowing storage.');
+        if (!notes.some((x) => x.id === noteId) && notes.length) noteId = notes[0].id;
+        paintNotes('Restored ' + added + (added === 1 ? ' page' : ' pages') + (same ? ' (' + same + ' already here)' : '') + '.');
+      } catch (e) { say(e.message); }
+    };
+    rd.readAsText(f);
+  }
 
   /* ================= Character sheet ================= */
   let cur = null;   // { ch, outs, panels, spIn, epIn }

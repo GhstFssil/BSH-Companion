@@ -470,6 +470,16 @@ function createMock() {
         if (!c.is_npc) { c.is_npc = true; c.npc_visible = false; c.npc_sheet_hidden = false; c.owner = me; c.updated_at = new Date().toISOString(); }
         return send(204);
       }
+      if (p === '/rest/v1/rpc/set_character_inactive') {
+        if (!me) return send(401, { message: 'JWT required' });
+        const P = (message) => send(400, { code: 'P0001', message });
+        const g = db.campaigns.find((x) => x.id === body.p_campaign);
+        if (!g || !db.members.some((m) => m.campaign_id === g.id && m.user_id === me && m.role === 'qm')) return P('Only a QM can do that.');
+        const c = db.characters.find((x) => x.id === body.p_character);
+        if (!c || c.campaign_id !== g.id) return P('That character is not in this campaign.');
+        const ids = (g.inactive_ids || []).filter((x) => x !== c.id); if (body.p_inactive) ids.push(c.id);
+        g.inactive_ids = ids; return send(204);
+      }
       if (p === '/rest/v1/rpc/set_npc_visible') {
         if (!me) return send(401, { message: 'JWT required' });
         const c = db.characters.find((x) => x.id === body.p_character && x.is_npc);

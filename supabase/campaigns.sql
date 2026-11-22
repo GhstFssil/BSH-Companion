@@ -811,6 +811,25 @@ $$;
 revoke execute on function public.qm_deal_damage(uuid, uuid, numeric) from public, anon;
 grant execute on function public.qm_deal_damage(uuid, uuid, numeric) to authenticated;
 
+-- Inactive characters (a QM sets this; players' and NPCs' sheets are never touched). The list lives on the campaign and only this function changes it.
+alter table public.campaigns add column if not exists inactive_ids uuid[] not null default '{}';
+create or replace function public.set_character_inactive(p_campaign uuid, p_character uuid, p_inactive boolean)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+begin
+  if auth.uid() is null or not public.is_campaign_qm(p_campaign) then raise exception 'Only a QM can do that.'; end if;
+  if not exists (select 1 from public.characters where id = p_character and campaign_id = p_campaign) then raise exception 'That character is not in this campaign.'; end if;
+  update public.campaigns
+     set inactive_ids = case when coalesce(p_inactive, false)
+           then (select coalesce(array_agg(distinct x), '{}') from unnest(inactive_ids || p_character) x)
+           else array_remove(inactive_ids, p_character) end
+   where id = p_campaign;
+end;
+$$;
+revoke execute on function public.set_character_inactive(uuid, uuid, boolean) from public, anon;
+grant execute on function public.set_character_inactive(uuid, uuid, boolean) to authenticated;
+
 -- Blocking and parrying: an attack on a character who could block (AP and an equipped item with a CR) waits on the encounter
 -- until the target's owner (or a QM, who can skip the block) answers. start_attack records it; resolve_attack applies the damage (if any) and posts the
 -- outcome for the attacker to read. The app works out every number; these only store and apply them.

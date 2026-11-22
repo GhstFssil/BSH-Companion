@@ -43,3 +43,6 @@ See `tests/README.md` (setup, run commands, what each file covers). Rules for da
 - `HANDOFF.md`: current state; overwritten each time.
 - `BACKLOG.md`: open bugs and ideas.
 - `HISTORY.md`: append-only record of every change since 2026-11-20; not read unless Ricky asks.
+- Inactive characters: `campaigns.inactive_ids uuid[]`, changed only by `set_character_inactive(p_campaign, p_character, p_inactive)` (QM only). `listCampaigns` returns it as `campaign.inactive`. The campaign page moves dead (`info.alive === false`) and inactive characters to DEAD / INACTIVE right-edge side lists, unless they are in the running encounter.
+- Notes (`renderNotes` in app.js): device-only. localStorage key `bsh-notes-<user id>` holds the pages; `bsh-notes-backup-<user id>` holds the last-backup time. BACK UP NOTES / RESTORE NOTES use the file format `bloodsoup-hell-notes` (restore skips pages already present, cleans every field). Never in the database.
+- Compare screen (`openCompare`): own characters plus `listCampaignCharacters` for each campaign you belong to (stubs skipped); up to 4; highest value per row highlighted except Weight Class.

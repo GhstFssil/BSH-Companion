@@ -184,12 +184,12 @@ async function scenario(label, makeAs) {
   await open(S, 'campaign-' + NC);
   ok(await waitFor(() => crows(S).length === 1), P('NPC listed on the QM\'s campaign page'));
   let r0 = crows(S)[0];
-  ok(r0.name === 'Old Hag' && r0.tags.join() === 'NPC · HIDDEN' && r0.btns.join() === 'ACCEPT,SHOW TO PLAYERS,HIDE SHEET,SKILL CHECK,ACTIONS' && /Witch/.test(r0.sub), P('new NPC starts hidden, QM sees a SHOW toggle'));
+  ok(r0.name === 'Old Hag' && r0.tags.join() === 'NPC · HIDDEN' && r0.btns.join() === 'ACCEPT,SHOW TO PLAYERS,HIDE SHEET,SKILL CHECK,ACTIONS,MARK INACTIVE' && /Witch/.test(r0.sub), P('new NPC starts hidden, QM sees a SHOW toggle'));
   await open(R, 'campaign-' + NC); await wait(60);
   ok(crows(R).length === 0 && !R.$('noCampChars').hidden, P('hidden NPC is not visible to a player'));
 
   S.click([...crows(S)[0].el.querySelectorAll('.btn.small')].find((b) => /PLAYERS$/.test(b.textContent)));
-  ok(await waitFor(() => crows(S)[0] && crows(S)[0].tags.join() === 'NPC · SHOWN' && crows(S)[0].btns.join() === 'ACCEPT,HIDE FROM PLAYERS,HIDE SHEET,SKILL CHECK,ACTIONS'), P('QM toggles NPC to shown'));
+  ok(await waitFor(() => crows(S)[0] && crows(S)[0].tags.join() === 'NPC · SHOWN' && crows(S)[0].btns.join() === 'ACCEPT,HIDE FROM PLAYERS,HIDE SHEET,SKILL CHECK,ACTIONS,MARK INACTIVE'), P('QM toggles NPC to shown'));
   await open(R, 'campaign-' + NC);
   ok(await waitFor(() => crows(R).length === 1), P('shown NPC appears for a player'));
   r0 = crows(R)[0];
@@ -213,6 +213,22 @@ async function scenario(label, makeAs) {
     ok(await waitFor(async () => (Number((await hag()).vitals.damage) || 0) === d0 + 12), P('APPLY deals the damage')); 
     ok(/Applied/.test(S.$('dmgOut').textContent), P('and says so'));
     S.click(S.$('dmgClose')); }
+  // Inactive side list: QM marks a character inactive; it leaves the roster for the INACTIVE tab; MAKE ACTIVE brings it back
+  { await open(S, 'campaign-' + NC); await open(R, 'campaign-' + NC);
+    const mark = () => [...crows(S)[0].el.querySelectorAll('.btn.small')].find((b) => b.textContent === 'MARK INACTIVE');
+    ok(!!(await waitFor(() => crows(S)[0] && mark())) && ![...crows(R)[0].el.querySelectorAll('button')].some((b) => b.textContent === 'MARK INACTIVE'), P('only the QM sees MARK INACTIVE'));
+    ok(S.$('inactiveTab').hidden && S.$('deadTab').hidden, P('no side tabs while everyone is active'));
+    S.click(mark());
+    ok(await waitFor(() => crows(S).length === 0 && !S.$('inactiveTab').hidden), P('the character leaves the roster and the INACTIVE tab appears'));
+    S.click(S.$('inactiveTab')); ok(!S.$('charSide').hidden && /Old Hag/.test(S.$('charSideList').textContent), P('INACTIVE panel lists it'));
+    await open(R, 'campaign-' + NC); ok(await waitFor(() => crows(R).length === 0 && !R.$('inactiveTab').hidden), P('players see it in the side list too'));
+    ok(![...R.$('charSideList').querySelectorAll('button')].some((b) => b.textContent === 'MAKE ACTIVE'), P('players cannot make it active'));
+    S.click([...S.$('charSideList').querySelectorAll('button')].find((b) => b.textContent === 'MAKE ACTIVE'));
+    ok(await waitFor(() => crows(S).length === 1 && S.$('inactiveTab').hidden && S.$('charSide').hidden), P('MAKE ACTIVE returns it to the roster')); }
+  // Compare Characters offers the campaign characters you can see (the shown NPC), not hidden ones
+  R.go('compare');
+  ok(await waitFor(() => [...R.d.querySelectorAll('#cmpPick input[data-cmp]')].some((b) => /^Old Hag/.test(b.getAttribute('aria-label')) && /NPC/.test(b.getAttribute('aria-label')))), P('compare lists the shown NPC of my campaign'));
+  await open(R, 'campaign-' + NC); await waitFor(() => crows(R)[0]); r0 = crows(R)[0];
   R.click(r0.el.querySelector('.char-btn'));
   ok(await waitFor(() => R.vis().join() === 'sheet'), P('player can open the NPC'));
   R.tab('info');
