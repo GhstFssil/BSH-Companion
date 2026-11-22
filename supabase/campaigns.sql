@@ -734,7 +734,8 @@ end;
 $$;
 
 -- Spending points during an encounter: the character's owner, or a QM of the campaign, sets AP or SP remaining.
--- (Only these two numbers, only while an encounter is running.)
+-- (Only these two numbers, only while an encounter is running.) Bleed Tokens, Wound Tokens and the Bleeding condition
+-- ('bt', 'wt', 'bleeding'; whole numbers 0-1000, bleeding 0 or 1) can be set any time by the owner or a QM.
 create or replace function public.set_vital(p_character uuid, p_key text, p_value numeric)
 returns void
 language plpgsql security definer set search_path = public
@@ -743,12 +744,15 @@ declare
   c record; enc jsonb;
 begin
   if auth.uid() is null then raise exception 'Sign in first.'; end if;
-  if p_key not in ('apRemaining', 'spRemaining') then raise exception 'That cannot be changed this way.'; end if;
+  if p_key not in ('apRemaining', 'spRemaining', 'bt', 'wt', 'bleeding') then raise exception 'That cannot be changed this way.'; end if;
   if p_value is null or p_value < -1000 or p_value > 100000 then raise exception 'That number is not valid.'; end if;
+  if p_key in ('bt', 'wt', 'bleeding') and (p_value <> trunc(p_value) or p_value < 0 or p_value > 1000 or (p_key = 'bleeding' and p_value > 1)) then
+    raise exception 'That number is not valid.';
+  end if;
   select owner, campaign_id into c from public.characters where id = p_character;
   if not found or c.campaign_id is null then raise exception 'That character is not in a campaign.'; end if;
   select encounter into enc from public.campaigns where id = c.campaign_id;
-  if enc is null then raise exception 'Points can only be spent during an encounter.'; end if;
+  if enc is null and p_key in ('apRemaining', 'spRemaining') then raise exception 'Points can only be spent during an encounter.'; end if;
   if c.owner is distinct from auth.uid() and not public.is_campaign_qm(c.campaign_id) then
     raise exception 'You can only spend points for your own characters.';
   end if;
@@ -829,6 +833,48 @@ end;
 $$;
 revoke execute on function public.set_character_inactive(uuid, uuid, boolean) from public, anon;
 grant execute on function public.set_character_inactive(uuid, uuid, boolean) to authenticated;
+
+-- Campaign codex: what the party has discovered. { mobs: { key: entry }, items: { key: entry } } on the campaign.
+-- Any member's app records an entry the first time it sees it (an existing key is never overwritten); only a QM removes one,
+-- and a removed key is remembered under codex.removed so the apps do not record it again.
+alter table public.campaigns add column if not exists codex jsonb not null default '{}';
+create or replace function public.codex_record(p_campaign uuid, p_kind text, p_key text, p_entry jsonb)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+declare
+  cur jsonb; sect jsonb;
+begin
+  if auth.uid() is null or not public.is_campaign_member(p_campaign) then raise exception 'Only campaign members can do that.'; end if;
+  if p_kind is null or p_kind not in ('mobs', 'items') then raise exception 'That is not a codex section.'; end if;
+  if p_key is null or length(p_key) < 1 or length(p_key) > 80 then raise exception 'That name is not valid.'; end if;
+  if p_entry is null or jsonb_typeof(p_entry) <> 'object' or length(p_entry::text) > 4000 then raise exception 'That entry is not valid.'; end if;
+  select coalesce(codex, '{}'::jsonb) into cur from public.campaigns where id = p_campaign for update;
+  if not found then raise exception 'That campaign does not exist.'; end if;
+  sect := coalesce(cur->p_kind, '{}'::jsonb);
+  if jsonb_exists(sect, p_key) or jsonb_exists(coalesce(cur->'removed'->p_kind, '{}'::jsonb), p_key) then return; end if;
+  if (select count(*) from jsonb_object_keys(sect)) >= 300 then raise exception 'The codex is full.'; end if;
+  update public.campaigns set codex = jsonb_set(cur, array[p_kind], sect || jsonb_build_object(p_key, p_entry)) where id = p_campaign;
+end;
+$$;
+create or replace function public.codex_remove(p_campaign uuid, p_kind text, p_key text)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+declare
+  cur jsonb;
+begin
+  if auth.uid() is null or not public.is_campaign_qm(p_campaign) then raise exception 'Only a QM can do that.'; end if;
+  if p_kind is null or p_kind not in ('mobs', 'items') then raise exception 'That is not a codex section.'; end if;
+  if p_key is null or length(p_key) < 1 or length(p_key) > 80 then raise exception 'That name is not valid.'; end if;
+  select coalesce(codex, '{}'::jsonb) into cur from public.campaigns where id = p_campaign for update;
+  cur := jsonb_set(cur, array[p_kind], coalesce(cur->p_kind, '{}'::jsonb) - p_key);
+  cur := jsonb_set(cur, '{removed}', coalesce(cur->'removed', '{}'::jsonb) || jsonb_build_object(p_kind, coalesce(cur->'removed'->p_kind, '{}'::jsonb) || jsonb_build_object(p_key, true)));
+  update public.campaigns set codex = cur where id = p_campaign;
+end;
+$$;
+revoke execute on function public.codex_record(uuid, text, text, jsonb), public.codex_remove(uuid, text, text) from public, anon;
+grant execute on function public.codex_record(uuid, text, text, jsonb), public.codex_remove(uuid, text, text) to authenticated;
 
 -- Blocking and parrying: an attack on a character who could block (AP and an equipped item with a CR) waits on the encounter
 -- until the target's owner (or a QM, who can skip the block) answers. start_attack records it; resolve_attack applies the damage (if any) and posts the

@@ -219,8 +219,10 @@ function createMock() {
         const g = db.campaigns.find((x) => x.id === c.campaign_id), e = g && g.encounter;
         const qm = db.members.some((m) => m.campaign_id === c.campaign_id && m.user_id === me && m.role === 'qm');
         if (p.endsWith('set_vital')) {
-          if (!['apRemaining', 'spRemaining'].includes(body.p_key)) return P('That cannot be changed this way.');
-          if (!e) return P('Points can only be spent during an encounter.');
+          const tok = ['bt', 'wt', 'bleeding'].includes(body.p_key);
+          if (!['apRemaining', 'spRemaining'].includes(body.p_key) && !tok) return P('That cannot be changed this way.');
+          if (tok && (!Number.isInteger(body.p_value) || body.p_value < 0 || body.p_value > 1000 || (body.p_key === 'bleeding' && body.p_value > 1))) return P('That number is not valid.');
+          if (!e && !tok) return P('Points can only be spent during an encounter.');
           if (c.owner !== me && !qm) return P('You can only spend points for your own characters.');
           c.data = Object.assign({}, c.data, { vitals: Object.assign({}, (c.data || {}).vitals, { [body.p_key]: body.p_value }) });
           return send(204);
@@ -479,6 +481,27 @@ function createMock() {
         if (!c || c.campaign_id !== g.id) return P('That character is not in this campaign.');
         const ids = (g.inactive_ids || []).filter((x) => x !== c.id); if (body.p_inactive) ids.push(c.id);
         g.inactive_ids = ids; return send(204);
+      }
+      if (p === '/rest/v1/rpc/codex_record' || p === '/rest/v1/rpc/codex_remove') {
+        if (!me) return send(401, { message: 'JWT required' });
+        const P = (message) => send(400, { code: 'P0001', message });
+        const g = db.campaigns.find((x) => x.id === body.p_campaign);
+        const member = g && db.members.some((m) => m.campaign_id === g.id && m.user_id === me), qm = member && db.members.some((m) => m.campaign_id === g.id && m.user_id === me && m.role === 'qm');
+        if (!['mobs', 'items'].includes(body.p_kind)) return P('That is not a codex section.');
+        g && (g.codex = g.codex || {});
+        if (p.endsWith('codex_remove')) {
+          if (!qm) return P('Only a QM can do that.');
+          if (typeof body.p_key !== 'string' || !body.p_key.length || body.p_key.length > 80) return P('That name is not valid.');
+          if (g.codex[body.p_kind]) delete g.codex[body.p_kind][body.p_key];
+          g.codex.removed = g.codex.removed || {}; g.codex.removed[body.p_kind] = Object.assign({}, g.codex.removed[body.p_kind], { [body.p_key]: true });
+          return send(204);
+        }
+        if (!member) return P('Only campaign members can do that.');
+        if (typeof body.p_key !== 'string' || !body.p_key.length || body.p_key.length > 80) return P('That name is not valid.');
+        if (!body.p_entry || typeof body.p_entry !== 'object' || Array.isArray(body.p_entry) || JSON.stringify(body.p_entry).length > 4000) return P('That entry is not valid.');
+        const sect = g.codex[body.p_kind] = g.codex[body.p_kind] || {};
+        if (!Object.prototype.hasOwnProperty.call(sect, body.p_key) && !(g.codex.removed && g.codex.removed[body.p_kind] && g.codex.removed[body.p_kind][body.p_key])) sect[body.p_key] = body.p_entry;
+        return send(204);
       }
       if (p === '/rest/v1/rpc/set_npc_visible') {
         if (!me) return send(401, { message: 'JWT required' });

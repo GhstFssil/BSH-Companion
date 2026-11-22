@@ -214,6 +214,13 @@ const sv = (who, ch, key, val) => as(who, `select set_vital($1,$2,$3)`, [ch, key
 const stt = (who, ch, gain = 1, max = 10) => as(who, `select start_turn($1,$2,$3) r`, [ch, gain, max]);
 const vit = async (id) => (await as('ricky', `select data->'vitals' v from characters where id=$1`, [id])).rows[0].v;
 ok(err(await sv('sam', pcSam, 'apRemaining', 3), /only be spent during an encounter/), 'no spending outside an encounter');
+// Bleed Tokens, Wound Tokens and Bleeding: owner or QM, any time, whole numbers
+ok(!(await sv('sam', pcSam, 'bt', 12)).error && (await vit(pcSam)).bt === 12, 'a player sets their own Bleed Tokens outside an encounter');
+ok(!(await sv('ricky', pcSam, 'wt', 2)).error && (await vit(pcSam)).wt === 2, 'a QM sets Wound Tokens');
+ok(!(await sv('sam', pcSam, 'bleeding', 1)).error && (await vit(pcSam)).bleeding === 1, 'the Bleeding condition can be switched on');
+ok(err(await sv('ava', pcSam, 'bt', 1), /your own/), "a teammate cannot change another player's tokens");
+ok(err(await sv('sam', pcSam, 'bt', -1), /not valid/) && err(await sv('sam', pcSam, 'wt', 1.5), /not valid/) && err(await sv('sam', pcSam, 'bt', 5000), /not valid/) && err(await sv('sam', pcSam, 'bleeding', 2), /not valid/), 'token values must be whole numbers in range');
+await sv('sam', pcSam, 'bt', 0); await sv('sam', pcSam, 'wt', 0); await sv('sam', pcSam, 'bleeding', 0);
 ok(!(await as('ricky', `select start_encounter($1)`, [C])).error, 'points: new encounter');
 await si('sam', pcSam, 10, 0); await si('ava', pcAva, 5, 0);
 ok(!(await sv('sam', pcSam, 'apRemaining', 3)).error && (await vit(pcSam)).apRemaining === 3, 'a player spends AP on their own character');
@@ -287,6 +294,19 @@ ok((await as('ricky', `select end_encounter($1)`, [C])).error === undefined, 'bl
   await as('ricky', `select set_character_inactive($1,$2,true)`, [C, pcAva]);
   ok((await inact()).filter((x) => x === pcAva).length === 1, 'inactive: marking twice keeps one entry');
   ok(!(await as('ricky', `select set_character_inactive($1,$2,false)`, [C, pcAva])).error && !(await inact()).includes(pcAva), 'inactive: QM sets it active again'); }
+// Codex: any member records an entry once, only a QM removes one
+{ const cdx = async () => (await as('ricky', `select codex from campaigns where id=$1`, [C])).rows[0].codex;
+  const rec = (who, kind, key, entry) => as(who, `select codex_record($1,$2,$3,$4::jsonb)`, [C, kind, key, JSON.stringify(entry)]);
+  ok(!(await rec('sam', 'mobs', 'goblin', { name: 'Goblin', hp: 12 })).error && (await cdx()).mobs.goblin.hp === 12, 'codex: a player records a mob');
+  ok(!(await rec('ava', 'mobs', 'goblin', { name: 'Goblin', hp: 99 })).error && (await cdx()).mobs.goblin.hp === 12, 'codex: the first record stays');
+  ok(!(await rec('ricky', 'items', 'rusty key', { name: 'Rusty Key' })).error && (await cdx()).items['rusty key'].name === 'Rusty Key', 'codex: items go in their own section');
+  ok(err(await rec('sam', 'spells', 'x', {}), /not a codex section/) && err(await rec('sam', 'mobs', '', {}), /not valid/) && err(await rec('sam', 'mobs', 'x'.repeat(81), {}), /not valid/), 'codex: bad section or key refused');
+  ok(err(await as('sam', `select codex_record($1,'mobs','big',$2::jsonb)`, [C, JSON.stringify({ t: 'y'.repeat(5000) })]), /not valid/) && err(await as('sam', `select codex_record($1,'mobs','arr','[1]'::jsonb)`, [C]), /not valid/), 'codex: oversized or non-object entries refused');
+  ok(err(await as('sam', `select codex_record($1,'mobs','x','{}'::jsonb)`, [uuid()]), /Only campaign members/), 'codex: unknown campaign refused');
+  ok(err(await as('sam', `select codex_remove($1,'mobs','goblin')`, [C]), /Only a QM/) && (await cdx()).mobs.goblin, 'codex: a player cannot remove');
+  ok(!(await as('ricky', `select codex_remove($1,'mobs','goblin')`, [C])).error && !(await cdx()).mobs.goblin && (await cdx()).items['rusty key'], 'codex: a QM removes one entry');
+  ok(!(await rec('ava', 'mobs', 'goblin', { name: 'Goblin', hp: 1 })).error && !(await cdx()).mobs.goblin, 'codex: a removed entry is not recorded again');
+  ok(err(await as('ricky', `update campaigns set codex='{}' where id=$1`, [C]), /permission denied/), 'codex: no direct writes'); }
 // QM damage (manual): QM only, any character in the campaign, no encounter needed
 { const d0 = await dmgOf(pcAva);
   ok(err(await as('sam', `select qm_deal_damage($1,$2,3)`, [C, pcAva]), /Only a QM/), 'qm damage: a player cannot');

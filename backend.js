@@ -25,8 +25,8 @@
  *             setCombo(leaderId, finisherId, skill, level, total, text), cancelCombo(leaderId), comboLeaderAttack(campaignId, attackId, total, power, text),
  *             cancelComboAttack(campaignId, attackId)   (Combo Attacks: encounter.combos[leaderId] waits for the Finisher's turn; the attack then carries `combo`)
  *             setExplodeTokens(charId, 0..10)   (spend or hand out Explode Tokens; the owner, or a QM of the character's campaign),
- *             dealDamage(attackerId, targetId, amount)   (an attack during an encounter adds damage taken to the target), qmDealDamage(campaignId, targetId, amount)   (a QM adds damage taken to any character in their campaign, in or out of an encounter), setCharacterInactive(campaignId, charId, bool)   (QM only; campaign.inactive lists the ids),
- *             setVital(charId, 'apRemaining'|'spRemaining', value)   (spend points during an encounter; owner or QM),
+ *             dealDamage(attackerId, targetId, amount)   (an attack during an encounter adds damage taken to the target), qmDealDamage(campaignId, targetId, amount)   (a QM adds damage taken to any character in their campaign, in or out of an encounter), setCharacterInactive(campaignId, charId, bool)   (QM only; campaign.inactive lists the ids), codexRecord(campaignId, 'mobs'|'items', key, entry) / codexRemove(campaignId, kind, key)   (campaign.codex; any member records once, only a QM removes),
+ *             setVital(charId, 'apRemaining'|'spRemaining', value)   (spend points during an encounter; owner or QM; 'bt'|'wt'|'bleeding' any time),
  *             startTurn(charId, spGain, spMax, apMax?) -> {applied, ...}     (AP back to full, SP +spGain unless AP was 0; once per turn change)
  *             (listCampaigns rows carry `encounter`: null, or { id, startedAt, round, turn, moved, initiatives: { charId: {die, ib, total, tb, by} } })
  *             turn order = highest total first, ties by the random tb (see BSHBackend.turnOrder)
@@ -197,7 +197,7 @@
       // Returns every campaign: { id, name, createdBy, createdAt, members: [{userId, username, name, role}] }
       async listCampaigns() {
         const [g, m, p, ev] = await Promise.all([
-          sb.from('campaigns').select('id,name,created_by,created_at,encounter,spawn,inactive_ids').order('created_at', { ascending: false }),
+          sb.from('campaigns').select('id,name,created_by,created_at,encounter,spawn,inactive_ids,codex').order('created_at', { ascending: false }),
           sb.from('campaign_members').select('campaign_id,user_id,role,joined_at'),
           sb.from('profiles').select('id,username,name'),
           sb.from('encounter_events').select('id,campaign_id,name,visible,total,tb,one_time,round')   // the database only returns what you may see
@@ -217,7 +217,7 @@
           id: r.id, name: r.name, createdBy: r.created_by, createdAt: r.created_at,
           encounter: r.encounter ? Object.assign({}, r.encounter, { events: (ev.data || []).filter((e) => e.campaign_id === r.id)
             .map((e) => ({ id: e.id, name: e.name, visible: !!e.visible, total: Number(e.total), tb: Number(e.tb), oneTime: !!e.one_time, round: e.round })) }) : null,
-          spawn: r.spawn || null, inactive: r.inactive_ids || [],
+          spawn: r.spawn || null, inactive: r.inactive_ids || [], codex: r.codex || {},
           members: sortMembers(byCampaign[r.id] || [])
         }));
       },
@@ -490,6 +490,15 @@
         const { error } = await sb.rpc('set_character_inactive', { p_campaign: campaignId, p_character: characterId, p_inactive: !!inactive });
         if (error) throw friendly(error, 'Could not change that.');
       },
+      // Campaign codex (kind 'mobs' or 'items'): any member records an entry once; only a QM removes one. campaign.codex is { mobs: {key: entry}, items: {key: entry} }.
+      async codexRecord(campaignId, kind, key, entry) {
+        const { error } = await sb.rpc('codex_record', { p_campaign: campaignId, p_kind: kind, p_key: key, p_entry: entry });
+        if (error) throw friendly(error, 'Could not update the codex.');
+      },
+      async codexRemove(campaignId, kind, key) {
+        const { error } = await sb.rpc('codex_remove', { p_campaign: campaignId, p_kind: kind, p_key: key });
+        if (error) throw friendly(error, 'Could not update the codex.');
+      },
       async qmDealDamage(campaignId, targetId, amount) {
         const { error } = await sb.rpc('qm_deal_damage', { p_campaign: campaignId, p_target: targetId, p_amount: amount });
         if (error) throw friendly(error, 'Could not apply the damage.');
@@ -644,7 +653,7 @@
         return rd(GR, []).map((g) => ({
           id: g.id, name: g.name, createdBy: g.createdBy, createdAt: g.createdAt,
           encounter: g.encounter ? Object.assign({}, g.encounter, { tokens: undefined, events: (g.encounter.events || []).filter((e) => e.visible || isQmOf(g, uid)) }) : null,
-          spawn: g.spawn || null, inactive: g.inactive || [],
+          spawn: g.spawn || null, inactive: g.inactive || [], codex: g.codex || {},
           members: sortMembers(g.members.map((m) => {
             const a = accounts[m.userId] || {};
             return { userId: m.userId, username: a.username || '?', name: a.name || '', role: m.role, joinedAt: m.joinedAt };
@@ -924,12 +933,14 @@
       },
 
       async setVital(characterId, key, value) {
-        if (key !== 'apRemaining' && key !== 'spRemaining') throw fail('That cannot be changed this way.');
+        const tok = key === 'bt' || key === 'wt' || key === 'bleeding';
+        if (key !== 'apRemaining' && key !== 'spRemaining' && !tok) throw fail('That cannot be changed this way.');
         if (typeof value !== 'number' || !isFinite(value)) throw fail('That number is not valid.');
+        if (tok && (!Number.isInteger(value) || value < 0 || value > 1000 || (key === 'bleeding' && value > 1))) throw fail('That number is not valid.');
         const f = localFind(characterId);
         if (!f || !f.c.campaignId) throw fail('That character is not in a campaign.');
         const g = rd(GR, []).find((x) => x.id === f.c.campaignId);
-        if (!g || !g.encounter) throw fail('Points can only be spent during an encounter.');
+        if (!g || (!g.encounter && !tok)) throw fail('Points can only be spent during an encounter.');
         if (f.email !== uid && !isQmOf(g, uid)) throw fail('You can only spend points for your own characters.');
         f.c.vitals = Object.assign({}, f.c.vitals, { [key]: value });
         wr(CH(f.email), f.list);
@@ -1071,6 +1082,28 @@
         const ids = (g.inactive || []).filter((x) => x !== characterId);
         if (inactive) ids.push(characterId);
         g.inactive = ids;
+        wr(GR, camps);
+      },
+      async codexRecord(campaignId, kind, key, entry) {
+        const camps = rd(GR, []), g = camps.find((x) => x.id === campaignId);
+        if (!g || !g.members.some((m) => m.userId === uid)) throw fail('Only campaign members can do that.');
+        if (kind !== 'mobs' && kind !== 'items') throw fail('That is not a codex section.');
+        if (typeof key !== 'string' || key.length < 1 || key.length > 80) throw fail('That name is not valid.');
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry) || JSON.stringify(entry).length > 4000) throw fail('That entry is not valid.');
+        g.codex = g.codex || {}; const sect = g.codex[kind] = g.codex[kind] || {};
+        if (Object.prototype.hasOwnProperty.call(sect, key) || (g.codex.removed && g.codex.removed[kind] && g.codex.removed[kind][key])) return;
+        if (Object.keys(sect).length >= 300) throw fail('The codex is full.');
+        sect[key] = entry;
+        wr(GR, camps);
+      },
+      async codexRemove(campaignId, kind, key) {
+        const camps = rd(GR, []), g = camps.find((x) => x.id === campaignId);
+        if (!g || !isQmOf(g, uid)) throw fail('Only a QM can do that.');
+        if (kind !== 'mobs' && kind !== 'items') throw fail('That is not a codex section.');
+        if (typeof key !== 'string' || key.length < 1 || key.length > 80) throw fail('That name is not valid.');
+        g.codex = g.codex || {};
+        if (g.codex[kind]) delete g.codex[kind][key];
+        g.codex.removed = g.codex.removed || {}; g.codex.removed[kind] = Object.assign({}, g.codex.removed[kind], { [key]: true });
         wr(GR, camps);
       },
       async qmDealDamage(campaignId, targetId, amount) {

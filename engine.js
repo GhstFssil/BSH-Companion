@@ -82,7 +82,7 @@
       totemTalents: z(9), buffTalents: z(9),
       prof: z(36), totemProf: z(36), skillBuff: z(36), skillAdj: z(36), skillAdjPct: z(36),
       statBuff: z(12), statAdj: z(12), statAdjPct: z(12),
-      items: [], abilities: [], appearance: '', backstory: '', motivation: ''
+      items: [], abilities: [], customActions: [], appearance: '', backstory: '', motivation: ''
     };
   }
 
@@ -115,7 +115,8 @@
     const statBuff = arr(ch.statBuff, 12), statAdj = arr(ch.statAdj, 12), statPct = arr(ch.statAdjPct, 12).map((p) => p / 100);
     const ib = itemBuffs(ch);
     const v = ch.vitals || {};
-    const overall = num(v.overallPct) / 100;
+    const tokenCut = TOKENS.cut(v.bt, v.wt);
+    const overall = num(v.overallPct) / 100 - tokenCut;   // Bleed and Wound Tokens reduce every Aggregate Stat
     const weight = num(ch.info && ch.info.weight);
 
     // Skill helpers (Aggregate!M27:N44) and final modifiers (Aggregate!D27:H44)
@@ -167,10 +168,31 @@
       talentLevel: talents.reduce((t, x) => t + x, 0),
       profLevel: prof.reduce((t, x) => t + x, 0),
       skillLevel: helper.reduce((t, x) => t + x, 0),
-      hpRemaining, capacityAvailable, itemBuffs: ib
+      hpRemaining, capacityAvailable, itemBuffs: ib, tokenCut
     };
   }
 
+
+  // ---- Bleed Tokens (BT) and Wound Tokens (WT) (rulebook: Conditions) ----
+  // Every 20 BT and every WT cuts each Aggregate Stat by 10%. 20+ BT doubles SP costs, 50+ stuns, 100+ incapacitates; each BT beyond 100 costs 1 HP instead.
+  // 2+ WT gives -5 to Skill Check modifiers, 3+ WT gives disadvantage on Skill Checks. A single hit of 25% / 50% / 75% of max HP gives 1 / 2 / 3 WT.
+  const TOKENS = {
+    MAX_BT: 100,
+    count(n) { n = Math.trunc(Number(n) || 0); return n > 0 ? n : 0; },
+    cut(bt, wt) { return Math.min(1, 0.1 * Math.floor(TOKENS.count(bt) / 20) + 0.1 * TOKENS.count(wt)); },
+    woundsFor(dmg, maxHp) {
+      dmg = Number(dmg) || 0; maxHp = Number(maxHp) || 0;
+      if (dmg <= 0 || maxHp <= 0) return 0;
+      const f = dmg / maxHp; return f >= 0.75 ? 3 : f >= 0.5 ? 2 : f >= 0.25 ? 1 : 0;
+    },
+    skillMod(wt) { return TOKENS.count(wt) >= 2 ? -5 : 0; },
+    skillDisadvantage(wt) { return TOKENS.count(wt) >= 3; },
+    flags(bt) { bt = TOKENS.count(bt); return { spDouble: bt >= 20, stunned: bt >= 50, incapacitated: bt >= 100 }; },
+    // Gain n BT: up to 100 they are tokens; each one beyond that is 1 HP of damage instead.
+    gainBt(bt, n) { bt = TOKENS.count(bt); n = TOKENS.count(n); const top = Math.max(bt, TOKENS.MAX_BT), next = Math.min(top, bt + n); return { bt: next, hpLoss: bt + n - next }; },
+    // Wound Tokens a hit adds, with the condition it causes; 2 WT at once is Severely Wounded, 3 is Fatally Wounded (roll the matching Bodily table)
+    woundNote(n) { return n >= 3 ? 'Fatally Wounded: roll on the Bodily Disaster table.' : n === 2 ? 'Severely Wounded: roll on the Bodily Harm table.' : ''; }
+  };
 
   // ---- Explode Tokens (ET) ----
   // Each ET applied to a die adds 1 to it. An ET applied to a die already on its highest number makes it explode: roll another die of
@@ -305,5 +327,5 @@
     }
   };
 
-  return { TALENTS, SKILLS, STATS, CLASSES, DEFAULT_TALENT, blankCharacter, compute, itemBuffs, round, ET, COMBAT, COMBO, ADV };
+  return { TALENTS, SKILLS, STATS, CLASSES, DEFAULT_TALENT, blankCharacter, compute, itemBuffs, round, ET, COMBAT, COMBO, ADV, TOKENS };
 });

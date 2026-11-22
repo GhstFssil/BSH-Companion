@@ -19,3 +19,4 @@ Add a line with `echo '- ...' >> HISTORY.md`.
 - 2026-11-21 20:05 | next | Tracking Next Hit Critical automated for both attackers (vitals.nextCrit; resolve_attack p_used_crit/p_next_crit; end_encounter clears); engine/SQL/flow tests added
 - 2026-11-21 21:10 | next | Advantage/disadvantage (ADV/DIS stepper, BSH.ADV, rulebook wording); QM ROLL DAMAGE card + qm_deal_damage RPC; user guide updated, guide.js rebuilt; tests added
 - 2026-11-21 21:50 | next | Batch 3: DEAD/INACTIVE side lists (QM-only set_character_inactive, campaigns.inactive_ids); Compare Characters (up to 4); Notes (device-only, backup/restore, warning); guide updated; tests added
+- 2026-11-21 20:35 | next | Batch 4: Bleed/Wound Tokens (BSH.TOKENS, set_vital bt/wt/bleeding, rests remove BT, Respite/Short Rest cooldowns); custom actions; MAKE MOBS (mobs and bosses); campaign CODEX (codex column, codex_record/codex_remove); guide, README, ARCHITECTURE updated; tests bleed.js and batch4.js added

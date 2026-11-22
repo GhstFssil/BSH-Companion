@@ -9,9 +9,6 @@ _none logged yet_
 - [ ] (Ricky, 2026-11-21) Give mechanics to all abilities: go through every ability (class, totem, talent) and automate its effect where it is text only. Covers filling in the blank descriptions (Gary's Meat Matron, Spell Duelist) first.
 
 ## Ideas
-- [ ] Bleed/Wound tokens and rest cooldowns (deferred by Ricky).
-- [ ] Ability to create mobs and boss monsters. Apply settings similar to character sheet and a variation rate, then QM can generate them into the campaign.
-- [ ] Campaign codex that auto records mobs and items that have been discovered.
-- [ ] Ability to add custom actions.
+- [ ] (Claude, 2026-11-21) Wound conditions beyond the tokens (Severely/Fatally Wounded extra penalties, Bodily Harm/Disaster tables), the Bleeding condition's duration, and SP spent adding a BT are not automated.
 
 ## Watch (untested)

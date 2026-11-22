@@ -1,0 +1,17 @@
+const B = require('../engine.js');
+let n = 0, bad = 0; const ok = (c, m) => { n++; if (!c) { bad++; console.log('FAIL', m); } };
+const T = B.TOKENS;
+ok(T.cut(0, 0) === 0 && T.cut(19, 0) === 0 && Math.abs(T.cut(20, 0) - 0.1) < 1e-9 && Math.abs(T.cut(45, 2) - 0.4) < 1e-9, 'every 20 BT and every WT cut 10%');
+ok(T.cut(500, 50) === 1 && T.cut('x', null) === 0 && T.cut(-5, -5) === 0, 'the cut is capped at 100% and junk counts as none');
+ok(T.woundsFor(24, 100) === 0 && T.woundsFor(25, 100) === 1 && T.woundsFor(50, 100) === 2 && T.woundsFor(75, 100) === 3 && T.woundsFor(10, 0) === 0 && T.woundsFor(0, 100) === 0, 'WT from a single hit: 25% / 50% / 75% of max HP');
+ok(T.skillMod(1) === 0 && T.skillMod(2) === -5 && T.skillMod(3) === -5 && !T.skillDisadvantage(2) && T.skillDisadvantage(3), '2 WT is -5, 3 WT adds disadvantage');
+const f = T.flags(50); ok(f.spDouble && f.stunned && !f.incapacitated && !T.flags(19).spDouble && T.flags(100).incapacitated, 'BT thresholds 20 / 50 / 100');
+ok(JSON.stringify(T.gainBt(10, 1)) === '{"bt":11,"hpLoss":0}' && JSON.stringify(T.gainBt(100, 1)) === '{"bt":100,"hpLoss":1}' && JSON.stringify(T.gainBt(99, 3)) === '{"bt":100,"hpLoss":2}', 'BT beyond 100 cost HP instead');
+ok(/Bodily Harm/.test(T.woundNote(2)) && /Bodily Disaster/.test(T.woundNote(3)) && T.woundNote(1) === '', 'wound notes name the table to roll on');
+const c = B.blankCharacter(), hp0 = B.compute(c).stat[0];
+c.vitals = { bt: 20, wt: 1 };
+const r = B.compute(c);
+ok(Math.abs(r.tokenCut - 0.2) < 1e-9 && Math.abs(r.stat[0] - hp0 * 0.8) < 1e-6, 'compute: 20 BT + 1 WT = -20% on aggregate stats');
+c.vitals = { bt: 20, wt: 1, overallPct: 10 };
+ok(Math.abs(B.compute(c).stat[0] - hp0 * 0.9) < 1e-6, 'token cut stacks with the overall % adjustment');
+console.log(bad ? bad + ' FAILED of ' + n : 'ALL ' + n + ' PASSED');

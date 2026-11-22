@@ -18,6 +18,7 @@ cd tests && npm install      # jsdom and @electric-sql/pglite
 - Most UI tests run each scenario twice: local backend, then Supabase mock. Fixtures for the import tests are in `fixtures/`.
 
 ## Notes
+- `bleed.js`: Bleed/Wound Token maths (`BSH.TOKENS`). `batch4.js`: custom actions, mobs and bosses, the codex, token tags, the BLEEDING button and rest cooldowns, on both backends.
 - `gifts.js` and `spawn.js` take about 100 s each and can time out.
 - `et2.js` uses real dice and is occasionally flaky. Rerun before assuming a regression.
 - Last full run from this folder (2026-11-20): every file passed (sql 355, combat2 94, roster 116, campaigns 266, enc 114, and the rest). The only slow-to-pass issue seen was combat2 racing the 5 s poll once; fixed by refreshing devices after changing AP.

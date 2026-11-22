@@ -91,6 +91,7 @@
     }
     delete c.info.sexAge;
     c.vitals = Object.assign(BSH.blankCharacter().vitals, raw.vitals || {});
+    if (!Array.isArray(c.customActions)) c.customActions = [];
     return c;
   }
   // Pick up changes made elsewhere (another device, or a character handed to you) when the list opens
@@ -711,8 +712,10 @@
         i ? h('span', { class: 'tag init', title: initText(i), text: 'INIT ' + fmt(i.total) }) : null,
         enc && !i && !c.isNpc ? h('span', { class: 'tag', text: 'WAITING' }) : null,
         c.isNpc ? h('span', { class: 'tag', text: c.npcVisible ? 'NPC · SHOWN' : 'NPC · HIDDEN' }) : null,
+        c.info && (c.info.kind === 'boss' || c.info.kind === 'mob') ? h('span', { class: 'tag', text: c.info.kind === 'boss' ? 'BOSS' : 'MOB' }) : null,
         c.isNpc && c.sheetHidden ? h('span', { class: 'tag', text: 'SHEET HIDDEN' }) : null,
         c.vitals && c.vitals.nextCrit ? h('span', { class: 'tag', text: 'NEXT HIT CRIT' }) : null,
+        ...tokenTags(c).map((t) => h('span', { class: 'tag', text: t })),
         r.mine && !c.isNpc ? h('span', { class: 'tag', text: 'YOURS' }) : null);
       if (c.isNpc && qm) {
         row.append(h('button', { class: 'btn small', type: 'button', text: c.npcVisible ? 'HIDE FROM PLAYERS' : 'SHOW TO PLAYERS',
@@ -722,6 +725,8 @@
       }
       if (myTurn && r.mine && !c.isNpc) row.append(h('button', { class: 'btn small', type: 'button', text: 'END TURN',
         onclick: () => campaignAction(() => backend.advanceTurn(g.id, c.id)).then(() => pollCampaigns(true)) }));
+      if (!locked && (qm || (r.mine && !c.isNpc))) row.append(h('button', { class: 'btn small', type: 'button', text: c.vitals && c.vitals.bleeding ? 'STOP BLEEDING' : 'BLEEDING',
+        onclick: () => campaignAction(() => setTokens(c, 'bleeding', c.vitals && c.vitals.bleeding ? 0 : 1)) }));
       if (!locked) row.append(h('button', { class: 'btn small', type: 'button', text: 'SKILL CHECK', onclick: () => openSkillCheck(c) }),
         h('button', { class: 'btn small', type: 'button', text: 'ACTIONS', onclick: () => openActions(c, r.mine && !!findChar(c.id)) }));
       if (qm) row.append(h('button', { class: 'btn small', type: 'button', text: 'MARK INACTIVE', onclick: () => campaignAction(() => backend.setCharacterInactive(g.id, c.id, true)) }));
@@ -759,8 +764,10 @@
           go('character-' + c.id);
         } catch (e) { setCampaignMsgs(e.message); }
       } }));
-      npcBar.append(spawnButton(g), giveEtButton(g), h('button', { class: 'btn small', type: 'button', id: 'dmgBtn', text: 'ROLL DAMAGE', onclick: () => damageCard(g) }));
+      npcBar.append(spawnButton(g), mobButton(g), giveEtButton(g), h('button', { class: 'btn small', type: 'button', id: 'dmgBtn', text: 'ROLL DAMAGE', onclick: () => damageCard(g) }));
     }
+    npcBar.append(codexButton(g));
+    codexSync(g).catch(() => { /* best effort */ });
   }
 
   $('campaignName').addEventListener('input', () => {
@@ -979,8 +986,10 @@
       const tr = state.campChars.find((r) => r.ch.id === pending.id);
       try {
         if (pending.dmg > 0) await backend.qmDealDamage(g.id, pending.id, pending.dmg);
+        let tokTxt = '';
+        if (pending.dmg > 0 && tr && !/psychic/i.test(pending.line || '')) { try { const r0 = BSH.compute(tr.ch); tokTxt = (await applyHitTokens(Object.assign({}, tr.ch, { vitals: Object.assign({}, tr.ch.vitals, { bleeding: 0 }) }), pending.dmg, r0.stat[0])).text; } catch (e) { tokTxt = ''; } }
         if (tr && pending.dmg > 0) { tr.ch.vitals = tr.ch.vitals || {}; tr.ch.vitals.damage = r2((Number(tr.ch.vitals.damage) || 0) + pending.dmg); }
-        out.textContent = pending.line + (pending.dmg > 0 ? ' Applied. ' : ' Nothing to apply. ') + pending.hp;
+        out.textContent = pending.line + (pending.dmg > 0 ? ' Applied. ' : ' Nothing to apply. ') + pending.hp + tokTxt;
         pending = null;
         try { renderCampaignPage(); } catch (e) { /* page not open */ }
       } catch (e) { out.textContent = e.message; apply.disabled = false; }
@@ -1025,14 +1034,14 @@
   const skillAdv = advStepper();
   function skillRes() { return BSH.compute(skillChar); }
   function skillSync() {
-    const i = +$('skillSel').value, m = skillRes().skillMod[i];
-    $('skillModText').textContent = BSH.SKILLS[i].name + ' modifier ' + signed(m);
+    const i = +$('skillSel').value, wt = tokenOf(skillChar, 'wt'), m = skillRes().skillMod[i] + BSH.TOKENS.skillMod(wt);
+    $('skillModText').textContent = BSH.SKILLS[i].name + ' modifier ' + signed(m) + (wt >= 2 ? ' (includes -5 from ' + wt + ' Wound Tokens)' : '') + (BSH.TOKENS.skillDisadvantage(wt) ? '. You have disadvantage on Skill Checks (' + wt + ' Wound Tokens): tap DIS before you roll.' : '');
     $('skillOut').textContent = ''; $('skillMsg').textContent = '';
   }
   async function skillRoll(die) {
     const advNote = skillAdv.take();
     if (die == null) { $('skillMsg').textContent = 'Enter the number on your d20 (1 to 20).'; return; }
-    const ch = skillChar, i = +$('skillSel').value, m = skillRes().skillMod[i];
+    const ch = skillChar, i = +$('skillSel').value, m = skillRes().skillMod[i] + BSH.TOKENS.skillMod(tokenOf(skillChar, 'wt'));
     const r = await etRoll({ ch, title: BSH.SKILLS[i].name + ' check', sides: [20], typed: [die], labels: ['d20'], defensive: true });
     if (!r || skillChar !== ch) return;
     const g = r.groups[0], adj = g.natural === 1 ? -5 : g.natural === 20 ? 5 : 0, total = m + adj + g.total;
@@ -1042,7 +1051,7 @@
   function openSkillCheck(c) {
     skillChar = c;
     $('skillWho').textContent = c.info.name || 'Unnamed character';
-    const mods = skillRes().skillMod;
+    const wtMod = BSH.TOKENS.skillMod(tokenOf(c, 'wt')), mods = skillRes().skillMod.map((x) => x + wtMod);
     $('skillSel').replaceChildren(...BSH.SKILLS.map((s, i) => h('option', { value: String(i), text: s.name + '  ' + signed(mods[i]) })));
     $('skillDie').value = '';
     skillAdv.reset();
@@ -1089,13 +1098,13 @@
   // Rests from the rulebook (Travel, Rest, and Sustenance). hp/ep: dice [count, sides], flat add, pct of total HP.
   const REST_TYPES = [
     { name: 'Respite', duration: '1 hour', effect: 'You can roll a Med Check to make and apply a Salve if you are Trained in it. You recover 1D2 HP and 1D2-1 EP; this effect cannot be used again until you recover at least 2 EP.',
-      bt: '1D4', hp: { dice: [1, 2] }, ep: { dice: [1, 2], add: -1 } },
+      bt: '1D4', btx: { dice: [1, 4] }, cd: 2, hp: { dice: [1, 2] }, ep: { dice: [1, 2], add: -1 } },
     { name: 'Short Rest', duration: '4 hours', effect: 'You can sleep for up to 3 hours and/or eat a full meal if you wish. You recover 1D4+1 HP and 1D2+1 EP; this effect cannot be used again until you recover at least 6 EP.',
-      bt: '2D4', hp: { dice: [1, 4], add: 1 }, ep: { dice: [1, 2], add: 1 } },
+      bt: '2D4', btx: { dice: [2, 4] }, cd: 6, hp: { dice: [1, 4], add: 1 }, ep: { dice: [1, 2], add: 1 } },
     { name: 'Full Rest', duration: '12 hours', effect: 'You can set up and take down camp, eat two full meals, and/or have a full sleep. You recover 1D4+10% of your total HP and 2D2+2 EP.',
-      bt: '10+2D8', hp: { dice: [1, 4], pct: 0.1 }, ep: { dice: [2, 2], add: 2 } },
+      bt: '10+2D8', btx: { dice: [2, 8], add: 10 }, hp: { dice: [1, 4], pct: 0.1 }, ep: { dice: [2, 2], add: 2 } },
     { name: 'Long Rest', duration: '1 full day and 2 nights', effect: 'You recover 1D8+30% of your total HP and 1D6+6 EP.',
-      bt: '20+2D12', hp: { dice: [1, 8], pct: 0.3 }, ep: { dice: [1, 6], add: 6 } },
+      bt: '20+2D12', btx: { dice: [2, 12], add: 20 }, hp: { dice: [1, 8], pct: 0.3 }, ep: { dice: [1, 6], add: 6 } },
     { name: 'Extended Rest', duration: '3 full days and 4 nights', effect: 'Your HP and EP are restored to full.', bt: 'all', full: true }
   ];
   const rollDie = (sides) => {
@@ -1129,6 +1138,30 @@
     $('actionsList').hidden = true; $('actionsClose').hidden = true; $('actionsTitle').hidden = true; $('actionDetail').hidden = false;
     $('actionBack').focus({ preventScroll: true });
   }
+  /* ----- Bleed Tokens (BT), Wound Tokens (WT) and rest cooldowns ----- */
+  const tokenOf = (c, k) => BSH.TOKENS.count(c && c.vitals && c.vitals[k]);
+  const localCopies = (c) => [c, findChar(c.id)].concat(state.campChars.filter((r) => r.ch.id === c.id).map((r) => r.ch)).filter(Boolean);
+  // Writes a token count (bt, wt) or the Bleeding flag (0/1) to the database (owner or QM) and to every copy of the character on this device
+  async function setTokens(c, key, n) {
+    await backend.setVital(c.id, key, n);
+    localCopies(c).forEach((x) => { x.vitals = x.vitals || {}; x.vitals[key] = n; });
+  }
+  // What a rest cannot be used again until: remaining EP to recover, per rest name (Respite 2, Short Rest 6)
+  const restLocked = (c, name) => { const cd = c && c.vitals && c.vitals.restCd; return Math.max(0, Number(cd && cd[name]) || 0); };
+  function restCdTick(c, epGain) {
+    const cd = c.vitals && c.vitals.restCd; if (!cd || !(epGain > 0)) return;
+    const next = {};
+    Object.keys(cd).forEach((k) => { const left = r2((Number(cd[k]) || 0) - epGain); if (left > 0) next[k] = left; });
+    if (Object.keys(next).length) c.vitals.restCd = next; else delete c.vitals.restCd;
+  }
+  // Tag texts for the roster and the sheet
+  function tokenTags(c) {
+    const bt = tokenOf(c, 'bt'), wt = tokenOf(c, 'wt'), f = BSH.TOKENS.flags(bt), out = [];
+    if (c.vitals && c.vitals.bleeding) out.push('BLEEDING');
+    if (bt) out.push('BT ' + bt + (f.incapacitated ? ' · INCAPACITATED' : f.stunned ? ' · STUNNED' : f.spDouble ? ' · SP COST x2' : ''));
+    if (wt) out.push('WT ' + wt + (wt >= 3 ? ' · SKILL DISADV.' : wt >= 2 ? ' · SKILL -5' : ''));
+    return out;
+  }
   function restCard() {
     const mine = actionMine;
     showActionCard('Rest', [
@@ -1136,8 +1169,9 @@
         h('span', { class: 'dline rest-name', text: t.name }),
         h('span', { class: 'dline', text: 'Duration: ' + t.duration }),
         h('span', { class: 'dline', text: 'Effect: ' + t.effect }),
-        h('span', { class: 'dline dim', text: 'Bleed Tokens: removes ' + (t.bt === 'all' ? 'all' : t.bt) + ' BT (not tracked in the app).' }),
-        mine ? h('button', { class: 'btn small', type: 'button', text: 'TAKE ' + t.name.toUpperCase(), onclick: () => restRoller(t) }) : null,
+        h('span', { class: 'dline dim', text: 'Bleed Tokens: removes ' + (t.bt === 'all' ? 'all' : t.bt) + ' BT' + (t.full ? ' and 1 WT.' : '.') }),
+        restLocked(actionCh(), t.name) > 0 ? h('span', { class: 'dline', role: 'status', text: 'Locked: recover ' + fmt(restLocked(actionCh(), t.name)) + ' more EP (from another rest) before you can take this again.' }) : null,
+        mine ? h('button', { class: 'btn small', type: 'button', text: 'TAKE ' + t.name.toUpperCase(), disabled: restLocked(actionCh(), t.name) > 0, onclick: () => restRoller(t) }) : null,
         h('hr', { class: 'rest-sep' })
       ].filter(Boolean))
     ], showActionList);
@@ -1148,11 +1182,16 @@
     const back = () => restCard();
     if (t.full) {
       const go = h('button', { class: 'btn', type: 'button', text: 'APPLY REST' }), msg = h('span', { class: 'dline', role: 'status' });
-      go.addEventListener('click', async () => { go.disabled = true; await applyRest(ch, (c) => { setHp(c, totHp); c.vitals.epRemaining = null; }); msg.textContent = 'Done. HP and EP are full.'; });
-      showActionCard(t.name, [h('span', { class: 'dline', text: 'No dice. HP ' + fmt(hpNow) + ' to ' + fmt(totHp) + ', EP ' + fmt(epNow) + ' to ' + fmt(totEp) + '.' }), go, msg], back);
+      go.addEventListener('click', async () => {
+        go.disabled = true;
+        await applyRest(ch, (c) => { setHp(c, totHp); c.vitals.epRemaining = null; c.vitals.bt = 0; c.vitals.wt = Math.max(0, tokenOf(c, 'wt') - 1); delete c.vitals.restCd; });
+        msg.textContent = 'Done. HP and EP are full' + (btWas ? ', Bleed Tokens are cleared' : '') + (wtWas ? ' and 1 Wound Token is removed' : '') + '.';
+      });
+      const btWas = tokenOf(ch, 'bt'), wtWas = tokenOf(ch, 'wt');
+      showActionCard(t.name, [h('span', { class: 'dline', text: 'No dice. HP ' + fmt(hpNow) + ' to ' + fmt(totHp) + ', EP ' + fmt(epNow) + ' to ' + fmt(totEp) + '.' + (btWas ? ' BT ' + btWas + ' to 0.' : '') + (wtWas ? ' WT ' + wtWas + ' to ' + (wtWas - 1) + '.' : '') }), go, msg], back);
       return;
     }
-    const groups = [['HP', t.hp], ['EP', t.ep]], rows = [];
+    const btNow = tokenOf(ch, 'bt'), groups = [['HP', t.hp], ['EP', t.ep]].concat(btNow > 0 && t.btx ? [['BT', t.btx]] : []), rows = [];
     async function rollRows(list) {
       const r = await etRoll({ ch, title: t.name, sides: list.map((x) => x.sides), labels: list.map((x) => x.key + ' D' + x.sides) });
       if (!r) return;
@@ -1184,12 +1223,18 @@
       const hpGain = Math.max(0, r2(tot('HP') + (t.hp.add || 0) + (t.hp.pct ? totHp * t.hp.pct : 0)));
       const epGain = Math.max(0, r2(tot('EP') + (t.ep.add || 0)));
       const hpTo = Math.max(hpNow, Math.min(totHp, r2(hpNow + hpGain))), epTo = Math.max(epNow, Math.min(totEp, r2(epNow + epGain)));
-      gains = { hpTo, epTo };
-      sum.textContent = 'HP +' + fmt(hpGain) + ' (' + fmt(hpNow) + ' to ' + fmt(hpTo) + ')   EP +' + fmt(epGain) + ' (' + fmt(epNow) + ' to ' + fmt(epTo) + ')';
+      const btTo = btNow > 0 && t.btx ? Math.max(0, btNow - Math.max(0, tot('BT') + (t.btx.add || 0))) : btNow;
+      gains = { hpTo, epTo, btTo };
+      sum.textContent = 'HP +' + fmt(hpGain) + ' (' + fmt(hpNow) + ' to ' + fmt(hpTo) + ')   EP +' + fmt(epGain) + ' (' + fmt(epNow) + ' to ' + fmt(epTo) + ')' + (btNow > 0 ? '   BT ' + btNow + ' to ' + btTo : '');
     }
     go.addEventListener('click', async () => {
       if (!gains) return; go.disabled = true; all.disabled = true; rows.forEach((r) => { r.input.disabled = true; });
-      const g = gains; await applyRest(ch, (c) => { setHp(c, g.hpTo); c.vitals.epRemaining = g.epTo; });
+      const g = gains, epDone = Math.max(0, r2(g.epTo - epNow));
+      await applyRest(ch, (c) => {
+        setHp(c, g.hpTo); c.vitals.epRemaining = g.epTo; c.vitals.bt = g.btTo;
+        restCdTick(c, epDone);   // EP recovered here counts toward other rests' cooldowns
+        if (t.cd) { c.vitals.restCd = Object.assign({}, c.vitals.restCd, { [t.name]: t.cd }); }   // this rest cannot be used again until 2 / 6 EP are recovered
+      });
       sum.textContent += '   Done.';
     });
     showActionCard(t.name, nodes, back);
@@ -1287,6 +1332,19 @@
     } catch (e) { /* try again next tick */ }
   }
 
+  // Tokens a hit puts on the target: WT by damage as a share of max HP, and 1 BT if the target is Bleeding. Returns { text, hpLoss }.
+  async function applyHitTokens(tc, dmg, maxHp) {
+    const T = BSH.TOKENS, out = { text: '', hpLoss: 0 };
+    const w = T.woundsFor(dmg, maxHp);
+    if (w > 0) { const n = tokenOf(tc, 'wt') + w; await setTokens(tc, 'wt', n); out.text += ' +' + w + ' Wound Token' + (w > 1 ? 's' : '') + ' (WT ' + n + '). ' + T.woundNote(w); }
+    if (tc.vitals && tc.vitals.bleeding) {
+      const g = T.gainBt(tokenOf(tc, 'bt'), 1);
+      if (g.bt !== tokenOf(tc, 'bt')) await setTokens(tc, 'bt', g.bt);
+      out.hpLoss = g.hpLoss;
+      out.text += g.hpLoss ? ' Bleeding: 1 HP lost (BT already 100).' : ' Bleeding: +1 Bleed Token (BT ' + g.bt + ').';
+    }
+    return out;
+  }
   // Works out an attack on a target (their DA, plus any block already added) and applies it; the target's player or a QM runs this.
   // The characters of a campaign as I can see them (mine, or everything a QM can open); used to look up the Leader and Finisher of a combo.
   async function campaignChar(g, id) {
@@ -1300,7 +1358,7 @@
     const tn = tc.info.name || 'Unnamed character', eff = daEff == null ? da : daEff, before = res.hpRemaining, C = BSH.COMBAT;
     const head = ' vs ' + tn + "'s DA " + fmt(da) + (blockText || '') + ': ';
     const hpLine = (d) => ' ' + tn + ' HP ' + fmt(before) + ' to ' + fmt(before - d) + '.';
-    let dmg = 0, txt = '', eff2 = {}; const critFail = [], usedCrit = [], nextCrit = [];
+    let dmg = 0, txt = '', eff2 = {}, hitTarget = false; const critFail = [], usedCrit = [], nextCrit = [];
     const holds = (c) => !!(c && c.vitals && c.vitals.nextCrit);   // Next Hit Critical (from a Tracking Perfect Combo)
     if (!at.combo) {
       const atkr = await campaignChar(g, at.attacker);
@@ -1308,6 +1366,7 @@
       if (holds(atkr) && (kind === 'hit' || kind === 'crit')) { kind = 'crit'; usedCrit.push(at.attacker); }
       const plain = C.damage(at.power, ar, false);
       if (kind === 'crit' || kind === 'hit') {
+        hitTarget = true;
         dmg = C.damage(at.power, ar, kind === 'crit');
         txt = at.text + head + (kind === 'crit' ? 'CRITICAL HIT. ' : 'HIT. ') + 'Attack Pwr ' + fmt(at.power) + ' minus AC ' + fmt(ar) + ' = ' + fmt(plain)
           + (kind === 'crit' ? ', doubled = ' + fmt(dmg) : '') + ' damage.' + (usedCrit.length ? ' (Next Hit Critical spent.)' : '') + hpLine(dmg) + (kind === 'crit' ? " It has disadvantage on Skill Checks that are part of the attack's effect." : '');
@@ -1326,10 +1385,10 @@
         if (t2 > fTotal) fTotal = t2;
         let kind = C.classify(fTotal, eff);
         if (holds(fin) && (kind === 'hit' || kind === 'crit')) { kind = 'crit'; usedCrit.push(at.attacker); }
-        if (kind === 'crit' || kind === 'hit') { dmg = C.damage(F0.power, ar, kind === 'crit'); again += ' ' + (kind === 'crit' ? 'CRITICAL HIT' : 'HIT') + ' as a normal attack, ' + fmt(dmg) + ' damage.'; }
+        if (kind === 'crit' || kind === 'hit') { hitTarget = true; dmg = C.damage(F0.power, ar, kind === 'crit'); again += ' ' + (kind === 'crit' ? 'CRITICAL HIT' : 'HIT') + ' as a normal attack, ' + fmt(dmg) + ' damage.'; }
         txt = 'Combo Attack (' + name + ')' + head + 'both attacks missed.' + again + (dmg > 0 ? hpLine(dmg) : '');
       } else {
-        dmg = r.damage; eff2 = r.effects;
+        dmg = r.damage; eff2 = r.effects; hitTarget = true;
         if (r.used && r.used.L) usedCrit.push(at.combo.leader);
         if (r.used && r.used.F) usedCrit.push(at.attacker);
         if (r.bonus && r.bonus.crit) nextCrit.push(at.combo.leader, at.attacker);   // Tracking Perfect Combo: both attackers' next hit is critical
@@ -1343,6 +1402,10 @@
       if (C.classify(L0.total, eff) === 'critfail') critFail.push(at.combo.leader);
       if (C.classify(F0.total, eff) === 'critfail') critFail.push(at.attacker);
       if (critFail.length) txt += ' Critical Miss: ' + (critFail.length > 1 ? 'both recover' : 'one recovers') + ' 2 less AP next turn.';
+    }
+    // Wound Tokens (a big hit) and Bleed Tokens (a hit while Bleeding); each Bleed Token beyond 100 costs 1 HP instead
+    if (hitTarget) {
+      try { const extra = await applyHitTokens(tc, dmg, res.stat[0]); if (extra.text) txt += extra.text; dmg = r2(dmg + extra.hpLoss); } catch (e) { txt += ' (Could not update tokens: ' + e.message + ')'; }
     }
     // the target's own points: a block spends 1 AP; some combo bonuses drain AP or SP
     let ap = vitalNow(tc, res, 'AP'), sp = vitalNow(tc, res, 'SP'), apNew = ap, spNew = sp;
@@ -1495,7 +1558,7 @@
       if (!(n >= 1 && n <= 20) || Math.floor(n) !== n) { out.textContent = 'Enter the number on your d20 (1 to 20).'; return; }
       const mc = actionCh(), f = others.find((r) => r.ch.id === fin.value);
       if (!f || !actionEncounter()) { out.textContent = 'Pick a Finisher.'; return; }
-      const res = BSH.compute(mc), i = BSH.SKILLS.findIndex((x) => x.name === skill.value), mod = res.skillMod[i];
+      const res = BSH.compute(mc), i = BSH.SKILLS.findIndex((x) => x.name === skill.value), mod = res.skillMod[i] + BSH.TOKENS.skillMod(tokenOf(me, 'wt'));
       const wantDream = !!(dreamBox && dreamBox.checked);
       let cost = BSH.COMBO.COST;
       if (wantDream && etHeld(mc) < 1) { out.textContent = 'You have no Explode Token to spend.'; return; }
@@ -1626,7 +1689,7 @@
   async function performAction(a) {
     const c = actionCh(), m = /^(\d+(?:\.\d+)?)\s*(AP|SP)$/.exec(a.cost || '');
     if (!m || !actionEncounter()) return;
-    const key = m[2], amount = Number(m[1]), res = BSH.compute(c), now = vitalNow(c, res, key);
+    const key = m[2], res = BSH.compute(c), now = vitalNow(c, res, key), amount = Number(m[1]) * (key === 'SP' && BSH.TOKENS.flags(tokenOf(c, 'bt')).spDouble ? 2 : 1);   // 20+ BT doubles SP costs
     if (now < amount) { actionFeedback = 'Not enough ' + key + ' for ' + a.name + ' (' + fmt(now) + ' left).'; renderActionList(); return; }
     const next = r2(now - amount), field = key.toLowerCase() + 'Remaining';
     try {
@@ -1650,11 +1713,15 @@
         refs: () => [['Type', wp.type], ['Size', wp.size], ['Weight', wp.weight], ['Dmg Type', wp.damage], ['Range', wp.range], ['CR', wp.cr], ['Attack Dmg', wp.dmg], ['Effect', wp.effect]]
           .filter(([, v]) => v != null && String(v).trim() !== '').map(([l, v]) => [l, String(v)]) };
     });
-    ACTIONS.slice(0, -1).concat(weaponActs, ACTIONS.slice(-1)).forEach((a) => kids.push(h('div', { class: 'arow' },
+    const customActs = ((c && c.customActions) || []).filter((it) => it && String(it.name || '').trim()).map((it) => {
+      const ct = String(it.cost || '').trim(), m = /^(\d+(?:\.\d+)?)\s*(AP|SP)$/i.exec(ct);   // "2 AP" or "1 SP" gets a button that spends it; anything else is shown as text
+      return { name: it.name, desc: it.desc || 'A custom action.', cost: m ? m[1] + ' ' + m[2].toUpperCase() : null, note: m ? null : ct || null, custom: true };
+    });
+    ACTIONS.slice(0, -1).concat(weaponActs, customActs, ACTIONS.slice(-1)).forEach((a) => kids.push(h('div', { class: 'arow' },
       h('button', { class: 'btn', type: 'button', text: a.name, onclick: () => {
         if (a.card) { restCard(); return; }
         const st = BSH.compute(actionCh()).stat;
-        showActionCard(a.name, [a.desc, a.cost ? 'Cost: ' + a.cost : null, ...(a.refs ? a.refs(st, actionCh()).map(([l, v]) => l + ': ' + v) : [])]
+        showActionCard(a.name, [a.desc, a.cost ? 'Cost: ' + a.cost : a.note ? 'Cost: ' + a.note : null, ...(a.refs ? a.refs(st, actionCh()).map(([l, v]) => l + ': ' + v) : [])]
           .filter(Boolean).map((t) => h('span', { class: 'dline', text: t })), showActionList);
       } }),
       a.cost ? (canAct ? h('button', { class: 'acost', type: 'button', text: a.cost, 'aria-label': 'Perform ' + a.name + ' for ' + a.cost, onclick: () => (a.attack ? attackCard(a) : a.combo ? comboCard(a) : performAction(a)) })
@@ -1807,6 +1874,14 @@
       if (res && res.applied) {
         c.vitals.apRemaining = res.apRemaining == null ? null : res.apRemaining; c.vitals.spRemaining = res.sp; delete c.vitals.apPenalty;
         const mc = findChar(c.id); if (mc && mc !== c) { mc.vitals = Object.assign({}, mc.vitals, c.vitals); }
+        if (c.vitals.bleeding) {   // Bleeding: a Bleed Token at the start of each turn (each one beyond 100 costs 1 HP instead)
+          try {
+            const gb = BSH.TOKENS.gainBt(tokenOf(c, 'bt'), 1);
+            if (gb.bt !== tokenOf(c, 'bt')) await setTokens(c, 'bt', gb.bt);
+            if (gb.hpLoss > 0) { if (mine) await saveVital({ ch: c, mine: true }, 'HP', null, null, -gb.hpLoss); else await backend.qmDealDamage(g.id, c.id, gb.hpLoss); }
+            if (mine) showToast((c.info.name || 'Character') + ' is Bleeding: ' + (gb.hpLoss > 0 ? '1 HP lost' : 'Bleed Tokens ' + gb.bt) + '.');
+          } catch (err) { /* tokens are best effort */ }
+        }
         if (mine) showToast('Your turn, ' + (c.info.name || 'character') + ': ' + (res.apRemaining == null ? 'AP back to full' : 'AP back to ' + fmt(res.apRemaining) + ' (a Critical Miss cost you 2)') + (res.spGain > 0 ? ', SP +' + fmt(res.spGain) : '') + '.');
         try { renderCampaignPage(); } catch (err) { /* page not open */ }
         if (!$('actionsModal').hidden && !$('actionsList').hidden) renderActionList();
@@ -2075,6 +2150,130 @@
         h('button', { class: 'btn small', type: 'button', text: 'CANCEL', onclick: () => { spawnForOpen = false; renderSpawnBox(g, me, qm); } })),
       msg);
   }
+  /* ----- Mobs and bosses: a QM makes several varied copies of an NPC ----- */
+  const MOB_STATS = ['HP', 'SP', 'RD', 'IB', 'EP', 'SA', 'DA', 'BP', 'AC'];   // stats that vary and get the boost (not AP, Weight Class or Carrying Capacity)
+  // One copy of a template: a fresh id and name, fresh vitals, and each combat stat's percent adjustment moved by the boost and a random amount within +-vary
+  function mobFrom(tpl, name, base, kind, vary, boost) {
+    const c = normalizeChar(JSON.parse(JSON.stringify(tpl)));
+    ['campaignId', 'isNpc', 'npcVisible', 'sheetHidden', 'owner', 'ownerId'].forEach((k) => { delete c[k]; });
+    c.id = uuid(); c.created = c.updated = Date.now();
+    c.info = Object.assign({}, c.info, { name, kind, mobBase: base, alive: true });
+    c.vitals = Object.assign({}, c.vitals, { damage: null, tempHp: null, apRemaining: null, spRemaining: null, epRemaining: null });
+    ['bt', 'wt', 'bleeding', 'restCd', 'turnMark', 'nextCrit', 'apPenalty'].forEach((k) => { delete c.vitals[k]; });
+    c.statAdjPct = Array.from({ length: 12 }, (_, i) => Number(c.statAdjPct && c.statAdjPct[i]) || 0);
+    BSH.STATS.forEach((st, i) => {
+      if (!MOB_STATS.includes(st.key)) return;
+      c.statAdjPct[i] = r2(c.statAdjPct[i] + boost + (vary > 0 ? rollDie(2 * vary + 1) - vary - 1 : 0));
+    });
+    return c;
+  }
+  function mobCard(g) {
+    const rows = state.campChars.filter((r) => !r.stub && r.ch.isNpc);
+    $('etTitle').textContent = 'Make mobs and bosses';
+    const close = h('button', { class: 'btn small', type: 'button', id: 'etCancel', text: 'CLOSE', onclick: () => { $('etModal').hidden = true; $('etBody').replaceChildren(); } });
+    if (!rows.length) {
+      $('etBody').replaceChildren(h('p', { class: 'note', text: 'Make an NPC first (NEW NPC) and set it up the way you want a typical one to be. Mobs and bosses are varied copies of an NPC you pick.' }), close);
+      $('etModal').hidden = false; $('etTitle').focus({ preventScroll: true }); return;
+    }
+    const tpl = h('select', { id: 'mobTpl', 'aria-label': 'NPC to copy' }, rows.map((r) => h('option', { value: r.ch.id, text: r.ch.info.name || 'Unnamed NPC' })));
+    const kind = h('select', { id: 'mobKind', 'aria-label': 'Mob or boss' }, h('option', { value: 'mob', text: 'Mob' }), h('option', { value: 'boss', text: 'Boss' }));
+    const base = h('input', { type: 'text', id: 'mobName', maxlength: '50', class: 'num', 'aria-label': 'Name for the copies', autocomplete: 'off' });
+    const count = h('input', { type: 'number', id: 'mobCount', min: '1', max: '20', class: 'num', 'aria-label': 'How many' });
+    const vary = h('input', { type: 'number', id: 'mobVary', min: '0', max: '50', class: 'num', 'aria-label': 'Variation percent' });
+    const boost = h('input', { type: 'number', id: 'mobBoost', min: '-90', max: '300', class: 'num', 'aria-label': 'Stat boost percent' });
+    const msg = h('p', { class: 'skill-out', role: 'status', id: 'mobMsg' });
+    const syncName = () => { const r = rows.find((x) => x.ch.id === tpl.value); base.value = r ? (r.ch.info.mobBase || r.ch.info.name || '') : ''; };
+    const syncKind = () => { const boss = kind.value === 'boss'; count.value = boss ? '1' : '3'; vary.value = boss ? '5' : '10'; boost.value = boss ? '50' : '0'; };
+    tpl.addEventListener('change', syncName); kind.addEventListener('change', syncKind);
+    syncName(); syncKind();
+    const make = h('button', { class: 'btn', type: 'button', id: 'mobGo', text: 'MAKE THEM', onclick: async () => {
+      const src = rows.find((x) => x.ch.id === tpl.value), n = Math.floor(Number(count.value)), v = Math.floor(Number(vary.value)), b = Number(boost.value), name = base.value.trim().slice(0, 50);
+      if (!src || !name) { msg.textContent = 'Pick an NPC and give the copies a name.'; return; }
+      if (!(n >= 1 && n <= 20) || !(v >= 0 && v <= 50) || !(b >= -90 && b <= 300)) { msg.textContent = 'How many is 1 to 20, variation 0 to 50, boost -90 to 300.'; return; }
+      make.disabled = true; msg.textContent = '';
+      const have = state.campChars.filter((r) => !r.stub && r.ch.info && r.ch.info.mobBase === name).length, made = [];
+      try {
+        for (let i = 1; i <= n; i++) {
+          const nm = have === 0 && n === 1 ? name : name + ' ' + (have + i), c = mobFrom(src.ch, nm, name, kind.value, v, b);
+          await backend.createNpc(g.id, c);
+          c.campaignId = g.id; c.isNpc = true; c.npcVisible = false; state.chars.unshift(c); made.push(nm);
+        }
+        msg.textContent = 'Made ' + made.join(', ') + '. They are hidden; show each to the players from the roster.';
+      } catch (e) { msg.textContent = (made.length ? 'Made ' + made.join(', ') + ', then stopped: ' : '') + e.message; }
+      make.disabled = false;
+      try { const rows2 = await backend.listCampaignCharacters(g.id); state.campChars = rows2; state.campChars.forEach((r) => { r.ch = normalizeChar(r.ch); }); state.campCharsFor = g.id; renderCampaignPage(); } catch (e) { /* the next refresh will show them */ }
+    } });
+    $('etBody').replaceChildren(
+      h('p', { class: 'note', text: 'Copies an NPC several times. Each copy gets its own random change of up to the variation percent on HP, SP, RD, IB, EP, SA, DA, BP and AC, plus the boost. The copies are NPCs, hidden from the players until you show them.' }),
+      h('label', { class: 'fld' }, h('span', { class: 'lbl', text: 'Copy this NPC' }), tpl),
+      h('label', { class: 'fld' }, h('span', { class: 'lbl', text: 'Kind' }), kind),
+      h('label', { class: 'fld' }, h('span', { class: 'lbl', text: 'Name' }), base),
+      h('label', { class: 'fld' }, h('span', { class: 'lbl', text: 'How many' }), count),
+      h('label', { class: 'fld' }, h('span', { class: 'lbl', text: 'Variation % (each stat, up or down)' }), vary),
+      h('label', { class: 'fld' }, h('span', { class: 'lbl', text: 'Boost % (all of them stronger, or weaker if negative)' }), boost),
+      make, msg, close);
+    $('etModal').hidden = false; $('etTitle').focus({ preventScroll: true });
+  }
+  function mobButton(g) { return h('button', { class: 'btn small', type: 'button', id: 'mobBtn', text: 'MAKE MOBS', onclick: () => mobCard(g) }); }
+
+  /* ----- Campaign codex: mobs and items the party has seen ----- */
+  // Anything the players can see (a shown mob or boss NPC, any item on a visible sheet) is recorded the first time any member's app notices it.
+  const codexSent = new Set();   // this session's attempts, so a refused or removed entry is not retried over and over
+  const codexKey = (t) => String(t || '').trim().toLowerCase().slice(0, 80);
+  function codexCandidates() {
+    const out = [], STAT = (k) => BSH.STATS.findIndex((x) => x.key === k);
+    state.campChars.forEach((r) => {
+      const c = r.ch;
+      if (r.stub || !c || c.sheetHidden || (c.isNpc && !c.npcVisible)) return;
+      const nm = String((c.info && c.info.name) || '').trim();
+      if (c.info && (c.info.kind === 'mob' || c.info.kind === 'boss')) {
+        const base = String(c.info.mobBase || nm).trim(), res = BSH.compute(c);
+        if (codexKey(base)) out.push(['mobs', codexKey(base), { name: base.slice(0, 60), kind: c.info.kind, hp: Math.round(res.stat[STAT('HP')]), ac: Math.round(res.stat[STAT('AC')]), da: Math.round(res.stat[STAT('DA')]), sa: Math.round(res.stat[STAT('SA')]), bp: Math.round(res.stat[STAT('BP')]) }]);
+      }
+      (c.items || []).forEach((it) => {
+        const iname = String((it && it.name) || '').trim();
+        if (!iname || !codexKey(iname)) return;
+        const e = { name: iname.slice(0, 60), desc: String(it.desc || '').slice(0, 300), weapon: !!it.weapon, magic: !!it.magic };
+        if (it.weapon && it.weaponProps && it.weaponProps.dmg != null) e.dmg = String(it.weaponProps.dmg).slice(0, 40);
+        out.push(['items', codexKey(iname), e]);
+      });
+    });
+    return out;
+  }
+  async function codexSync(g) {
+    if (!g || state.campCharsFor !== g.id || !myMembership(g)) return;
+    const have = g.codex || {}, rem = have.removed || {};
+    let n = 0;
+    for (const [kind, key, entry] of codexCandidates()) {
+      const id = g.id + ':' + kind + ':' + key;
+      if ((have[kind] && have[kind][key]) || (rem[kind] && rem[kind][key]) || codexSent.has(id)) continue;
+      if (++n > 30) break;
+      codexSent.add(id);
+      try { await backend.codexRecord(g.id, kind, key, entry); g.codex = g.codex || {}; g.codex[kind] = g.codex[kind] || {}; g.codex[kind][key] = entry; } catch (e) { /* best effort */ }
+    }
+  }
+  function codexCard(g) {
+    const qm = iAmQm(g), cx = g.codex || {};
+    $('etTitle').textContent = 'Codex';
+    const sect = (kind, title, line) => {
+      const ents = Object.entries(cx[kind] || {}).sort((a, b) => a[1].name.localeCompare(b[1].name));
+      return [h('span', { class: 'dline rest-name', text: title + ' (' + ents.length + ')' }),
+        ...(ents.length ? ents.flatMap(([key, e]) => [
+          h('span', { class: 'dline', text: line(e) }),
+          e.desc ? h('span', { class: 'dline dim', text: e.desc }) : null,
+          qm ? h('button', { class: 'btn small', type: 'button', text: 'REMOVE ' + e.name.toUpperCase(), 'aria-label': 'Remove ' + e.name + ' from the codex', onclick: async () => {
+            try { await backend.codexRemove(g.id, kind, key); if (g.codex && g.codex[kind]) delete g.codex[kind][key]; g.codex.removed = g.codex.removed || {}; g.codex.removed[kind] = Object.assign({}, g.codex.removed[kind], { [key]: true }); codexCard(g); } catch (er) { setCampaignMsgs(er.message); }
+          } }) : null].filter(Boolean)) : [h('span', { class: 'dline dim', text: 'Nothing yet.' })]), h('hr', { class: 'rest-sep' })];
+    };
+    $('etBody').replaceChildren(
+      h('p', { class: 'note', text: 'What the party has come across: mobs and bosses, and items. Entries appear on their own once the players can see them' + (qm ? '; removing one keeps it out for good.' : '.') }),
+      ...sect('mobs', 'Mobs and bosses', (e) => (e.kind === 'boss' ? '[BOSS] ' : '') + e.name + '   HP ' + fmt(e.hp) + '  AC ' + fmt(e.ac) + '  DA ' + fmt(e.da) + '  SA ' + fmt(e.sa) + '  BP ' + fmt(e.bp)),
+      ...sect('items', 'Items', (e) => e.name + (e.weapon ? '  (weapon' + (e.dmg ? ', ' + e.dmg : '') + ')' : '') + (e.magic ? '  (magic)' : '')),
+      h('button', { class: 'btn small', type: 'button', id: 'etCancel', text: 'CLOSE', onclick: () => { $('etModal').hidden = true; $('etBody').replaceChildren(); } }));
+    $('etModal').hidden = false; $('etTitle').focus({ preventScroll: true });
+  }
+  function codexButton(g) { return h('button', { class: 'btn small', type: 'button', id: 'codexBtn', text: 'CODEX', onclick: () => codexCard(g) }); }
+
   function spawnButton(g) {
     return h('button', { class: 'btn small', type: 'button', id: 'spawnBtn', text: 'SPAWN CHARACTER', disabled: !!g.spawn,
       onclick: () => { spawnForOpen = !spawnForOpen; renderCampaignPage(); } });
@@ -2693,7 +2892,7 @@
   function sheetForExport(c) {
     const o = { info: c.info, vitals: c.vitals };
     ['talents', 'totemTalents', 'buffTalents', 'prof', 'totemProf', 'skillBuff', 'skillAdj', 'skillAdjPct', 'statBuff', 'statAdj', 'statAdjPct',
-      'items', 'abilities', 'appearance', 'backstory', 'motivation', 'tokenImage'].forEach((k) => { if (c[k] != null) o[k] = c[k]; });
+      'items', 'abilities', 'customActions', 'appearance', 'backstory', 'motivation', 'tokenImage'].forEach((k) => { if (c[k] != null) o[k] = c[k]; });
     return { format: IMPORT_FORMAT, version: 1, exported: new Date().toISOString(), character: JSON.parse(JSON.stringify(o)) };
   }
   function exportFileName(c) {
@@ -2730,6 +2929,7 @@
       return o;
     });
     c.abilities = (Array.isArray(raw.abilities) ? raw.abilities : []).slice(0, 100).filter((a) => a && typeof a === 'object').map((a) => ({ name: str(a.name, 100), desc: str(a.desc, 3000) }));
+    c.customActions = (Array.isArray(raw.customActions) ? raw.customActions : []).slice(0, 50).filter((a) => a && typeof a === 'object').map((a) => ({ name: str(a.name, 60), cost: str(a.cost, 20), desc: str(a.desc, 3000) }));
     c.appearance = str(raw.appearance, 10000); c.backstory = str(raw.backstory, 10000); c.motivation = str(raw.motivation, 10000);
     if (typeof raw.tokenImage === 'string' && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(raw.tokenImage) && raw.tokenImage.length <= 100000) c.tokenImage = raw.tokenImage;
     return c;
@@ -3226,7 +3426,11 @@
           h('div', { class: 'dmgrow' }, dhIn, h('button', { class: 'btn small', type: 'button', text: 'ACCEPT', onclick: acceptDh }))),
         field('Temp HP', numIn('vitals.tempHp', 'Temp HP')),
         field('Equipment weight', numIn('vitals.equipWeight', 'Equipment weight')),
-        field('Overall % add/subtract', numIn('vitals.overallPct', 'Overall percent adjustment'))),
+        field('Overall % add/subtract', numIn('vitals.overallPct', 'Overall percent adjustment')),
+        field('Bleed Tokens (BT)', numIn('vitals.bt', 'Bleed Tokens')),
+        field('Wound Tokens (WT)', numIn('vitals.wt', 'Wound Tokens')),
+        h('label', { class: 'chk' }, bind(h('input', { type: 'checkbox', 'aria-label': 'Bleeding' }), 'vitals.bleeding', 'check'), h('span', { text: 'Bleeding (a Bleed Token each turn and each hit)' }))),
+      h('p', { class: 'hint', text: 'Every 20 BT and every WT cuts all Aggregate Stats by 10%. 20+ BT doubles SP costs, 50+ stuns, 100+ incapacitates. 2+ WT is -5 on Skill Checks, 3+ WT is disadvantage on them.' }),
       sec('Aggregate stats'),
       h('div', { class: 'stats2' },
         h('div', { class: 'statcol' }, statHead(), ...rows.slice(0, half)),
@@ -3613,12 +3817,26 @@
     return h('div', { class: 'token-field' }, prev, file,
       h('button', { class: 'btn small', type: 'button', id: 'tokenClear', text: 'REMOVE PICTURE', onclick: () => { delete cur.ch.tokenImage; touch(); paint(); } }), msg);
   }
+  // A custom action: shows in the Actions menu. A cost like "2 AP" or "1 SP" adds a button that spends it.
+  function customActionCard(i) {
+    return h('div', { class: 'item custom-action' },
+      h('div', { class: 'iline abl' }, nameIn('customActions.' + i + '.name', 'Custom action name', 60), txtIn('customActions.' + i + '.cost', 'Custom action cost, for example 2 AP', 20),
+        h('button', { class: 'btn small', type: 'button', text: 'REMOVE', onclick: () => { cur.ch.customActions.splice(i, 1); touch(); rebuild('abilities'); } })),
+      h('div', { class: 'idesc' }, field('Description', growArea('customActions.' + i + '.desc', 'Custom action description'))));
+  }
   function panelAbilities() {
+    if (!Array.isArray(cur.ch.customActions)) cur.ch.customActions = [];
     return [
       sec('Abilities and fighting styles'),
       h('div', {}, cur.ch.abilities.map((_, i) => abilityCard(i))),
       h('button', { class: 'btn small', type: 'button', text: 'ADD ABILITY', onclick: () => {
         cur.ch.abilities.push({ name: '', desc: '' }); touch(); rebuild('abilities');
+      } }),
+      sec('Custom actions'),
+      h('p', { class: 'hint', text: 'Actions of your own, listed in the Actions menu. Give a cost like 2 AP or 1 SP to get a button that spends it in an encounter.' }),
+      h('div', {}, cur.ch.customActions.map((_, i) => customActionCard(i))),
+      h('button', { class: 'btn small', type: 'button', id: 'addCustomAction', text: 'ADD CUSTOM ACTION', onclick: () => {
+        cur.ch.customActions.push({ name: '', cost: '', desc: '' }); touch(); rebuild('abilities');
       } })
     ];
   }

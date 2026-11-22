@@ -44,6 +44,8 @@ Sheets save automatically. The sheet has nine tabs:
 - **ABILITIES**
 - **STORY**
 
+**Custom actions.** At the bottom of the ABILITIES tab, **ADD CUSTOM ACTION** makes an action of your own with a name, a cost and a description. It shows in the Actions menu just before Rest. A cost written like `2 AP` or `1 SP` gets a button that spends it during an encounter; any other cost text is just shown.
+
 **Tracking HP and other points.** HP remaining is editable right on the sheet. AP, SP and EP have "remaining" boxes on the STATS tab (leave blank for full). The **Damage/Healing** box with **ACCEPT** adds its number to HP remaining: positive heals, negative hurts.
 
 **Items.** Tap an item to open it. You can change its quantity (**-1 / +1**), put it in your **LEFT HAND** or **RIGHT HAND** (one item per hand), or wear it on your **BODY** (only items ticked Wearable). Tick **Weapon** to get weapon fields (Type, Size, Weight, Damage Type, Range, Cost, CR, Attack Dmg, Effect) and **Magic** for magic fields (Type, Attunement, Max Charges, Effect, Spellbook). **GIVE** passes an item to another character in your campaign.
@@ -67,7 +69,8 @@ A campaign is your group. Whoever creates it is its **QM** (the game master role
 **On the campaign page you will see:**
 - The member list, with each character's **HP, AP, SP and EP**. Your own characters are editable here too. Other people's are read-only.
 - **SKILL CHECK** on any of your characters. Pick a skill, then **ROLL D20** or type your own roll and tap **SET ROLL**. A natural 1 takes off 5 and a natural 20 adds 5. Only the person rolling sees the result.
-- **Actions > Rest** for the five rests from the rulebook. Tap **TAKE**, roll the dice (or type your own numbers), then **APPLY REST**. Bleed and Wound tokens and rest cooldowns are shown in the text but not tracked by the app.
+- **Actions > Rest** for the five rests from the rulebook. Tap **TAKE**, roll the dice (or type your own numbers), then **APPLY REST**. If you have Bleed Tokens the rest also rolls how many come off (Extended Rest clears them all and removes 1 Wound Token). Respite and Short Rest lock themselves after use: you cannot take that one again until you have recovered 2 EP (Respite) or 6 EP (Short Rest) from other rests, and the card tells you how much is left.
+- **Bleed and Wound Tokens.** On the STATS tab (and as tags on the roster) you track Bleed Tokens (BT), Wound Tokens (WT) and whether you are **Bleeding**. Every 20 BT and every WT cuts all your Aggregate Stats by 10%. 20 or more BT doubles SP costs, 50 or more stuns you and 100 or more incapacitates you (shown as tags). 2 or more WT gives -5 to Skill Checks and 3 or more gives disadvantage on them (the Skill Check popup applies the -5 and reminds you to tap DIS). While Bleeding you gain 1 BT at the start of each of your turns and each time you are hit (each BT beyond 100 costs 1 HP instead). A hit that does 25%, 50% or 75% of your max HP gives 1, 2 or 3 WT, and the result tells you when to roll on the Bodily Harm or Bodily Disaster table. The **BLEEDING** button on the roster switches the condition on and off (yours, or any character if you are the QM).
 - **DEAD** and **INACTIVE** tabs on the right edge (they appear only when someone belongs there). A character whose Alive box is unticked goes to DEAD. The QM can move any character to INACTIVE with **MARK INACTIVE** on its row, and back with **MAKE ACTIVE**. Characters on these lists leave the main list, but you can still open them. Someone already in the running encounter stays on the main list until it ends.
 - **VIEW ENCOUNTER MAPS**.
 - **LEAVE CAMPAIGN**, or **BECOME A PLAYER** if you are a QM and want to step down. Both need a second tap.
@@ -116,6 +119,8 @@ Everything above, plus:
 - **GIVE EXPLODE TOKENS**: tick the players, pick 1 to 3.
 - **ROLL DAMAGE**: for traps, spells and anything outside a normal attack. Pick the target, type a formula such as `BP+3+1D6` or `2D8+4`, and (if it uses BP) whose BP to use. Tick **Ignore AC** or **Critical** if they apply. **ROLL** shows the dice and the result, then **APPLY** deals it. Changing anything after a roll clears it, so you must roll again.
 - **ADD MAP** attaches one of the campaign's maps to the current encounter.
+- **MAKE MOBS**: pick an NPC to copy, choose Mob or Boss, a name, how many (1 to 20), a **variation %** (each copy's HP, SP, RD, IB, EP, SA, DA, BP and AC moves up or down by a random amount within it) and a **boost %** (every copy stronger, or weaker if negative; a boss starts at +50). The copies are hidden NPCs named "Name 1", "Name 2" and so on, marked MOB or BOSS on the roster.
+- **CODEX** (everyone): mobs, bosses and items the party has come across. They are recorded on their own once players can see them (a shown mob or boss, any item on a sheet players can see). You can remove an entry with its REMOVE button, and it stays removed.
 
 **NPCs**
 - Make an NPC by opening any character's sheet in your campaign (even a player's), going to the INFO tab and tapping **MAKE NPC** twice. It moves to you as a hidden NPC and the player loses it.

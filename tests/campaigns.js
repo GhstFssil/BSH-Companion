@@ -184,12 +184,12 @@ async function scenario(label, makeAs) {
   await open(S, 'campaign-' + NC);
   ok(await waitFor(() => crows(S).length === 1), P('NPC listed on the QM\'s campaign page'));
   let r0 = crows(S)[0];
-  ok(r0.name === 'Old Hag' && r0.tags.join() === 'NPC · HIDDEN' && r0.btns.join() === 'ACCEPT,SHOW TO PLAYERS,HIDE SHEET,SKILL CHECK,ACTIONS,MARK INACTIVE' && /Witch/.test(r0.sub), P('new NPC starts hidden, QM sees a SHOW toggle'));
+  ok(r0.name === 'Old Hag' && r0.tags.join() === 'NPC · HIDDEN' && r0.btns.join() === 'ACCEPT,SHOW TO PLAYERS,HIDE SHEET,BLEEDING,SKILL CHECK,ACTIONS,MARK INACTIVE' && /Witch/.test(r0.sub), P('new NPC starts hidden, QM sees a SHOW toggle'));
   await open(R, 'campaign-' + NC); await wait(60);
   ok(crows(R).length === 0 && !R.$('noCampChars').hidden, P('hidden NPC is not visible to a player'));
 
   S.click([...crows(S)[0].el.querySelectorAll('.btn.small')].find((b) => /PLAYERS$/.test(b.textContent)));
-  ok(await waitFor(() => crows(S)[0] && crows(S)[0].tags.join() === 'NPC · SHOWN' && crows(S)[0].btns.join() === 'ACCEPT,HIDE FROM PLAYERS,HIDE SHEET,SKILL CHECK,ACTIONS,MARK INACTIVE'), P('QM toggles NPC to shown'));
+  ok(await waitFor(() => crows(S)[0] && crows(S)[0].tags.join() === 'NPC · SHOWN' && crows(S)[0].btns.join() === 'ACCEPT,HIDE FROM PLAYERS,HIDE SHEET,BLEEDING,SKILL CHECK,ACTIONS,MARK INACTIVE'), P('QM toggles NPC to shown'));
   await open(R, 'campaign-' + NC);
   ok(await waitFor(() => crows(R).length === 1), P('shown NPC appears for a player'));
   r0 = crows(R)[0];
