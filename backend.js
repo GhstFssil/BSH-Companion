@@ -785,6 +785,7 @@
         const f = localFind(characterId), g = f && f.c.isNpc && f.c.campaignId && rd(GR, []).find((x) => x.id === f.c.campaignId);
         if (!g || !isQmOf(g, uid)) throw fail('Only a QM can take an NPC out of a campaign.');
         dropFromEncounter(g.id, characterId);
+        if (isMobNpc(f.c)) { wr(CH(f.email), f.list.filter((x) => x.id !== characterId)); return; }   // a generated mob is deleted
         f.c.campaignId = null; f.c.npcVisible = false; f.c.sheetHidden = false;
         wr(CH(f.email), f.list);
       },
@@ -1504,12 +1505,17 @@
 
     // clear character links to a campaign (for one player, or everyone when userId is null)
     // Leaving / removed: that player's characters in the campaign are unlinked. Campaign deleted (userId null): everyone's linked
-    // characters are unlinked. NPCs are never deleted by this: they stay with their owner, outside any campaign.
+    // characters are unlinked. NPCs stay with their owner, outside any campaign; mob and boss NPCs are deleted.
+    // A mob or boss made from a compendium (or by the old MAKE MOBS): it is deleted, not kept, when it leaves its campaign
+    function isMobNpc(c) { return !!(c && c.isNpc && c.info && (c.info.kind === 'mob' || c.info.kind === 'boss')); }
     function unlinkChars(campaignId, userId) {
       Object.keys(rd(ACC, {})).forEach((email) => {
         if (userId && email !== userId) return;
         let list = rd(CH(email), []);
         let changed = false;
+        const before = list.length;
+        list = list.filter((c) => !(c.campaignId === campaignId && isMobNpc(c)));   // a generated mob is deleted with its campaign link
+        changed = list.length !== before;
         list.forEach((c) => {
           if (c.campaignId === campaignId) { c.campaignId = null; c.npcVisible = false; c.sheetHidden = false; changed = true; }   // an NPC stays an NPC of its owner
         });

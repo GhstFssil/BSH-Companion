@@ -159,12 +159,20 @@ drop trigger if exists check_character_campaign_trg on public.characters;
 create trigger check_character_campaign_trg before insert or update on public.characters
   for each row execute function public.check_character_campaign();
 
+-- A mob or boss made from a compendium (or by the old MAKE MOBS): deleted, not kept, when it leaves its campaign.
+create or replace function public.is_mob_npc(p_is_npc boolean, p_data jsonb)
+returns boolean
+language sql immutable
+as $$ select coalesce(p_is_npc, false) and coalesce(p_data->'info'->>'kind', '') in ('mob', 'boss') $$;
+
 create or replace function public.unlink_characters_on_leave()
 returns trigger
 language plpgsql security definer set search_path = public
 as $$
 begin
-  -- the player's characters in this campaign are unlinked. An NPC stays an NPC of its owner, just outside any campaign.
+  -- the player's characters in this campaign are unlinked. An NPC stays an NPC of its owner, just outside any campaign;
+  -- a generated mob or boss NPC is deleted instead.
+  delete from public.characters where campaign_id = old.campaign_id and owner = old.user_id and public.is_mob_npc(is_npc, data);
   update public.characters set campaign_id = null, npc_visible = false, npc_sheet_hidden = false
   where campaign_id = old.campaign_id and owner = old.user_id;
   return old;
@@ -176,12 +184,14 @@ create trigger unlink_characters_on_leave_trg after delete on public.campaign_me
   for each row execute function public.unlink_characters_on_leave();
 
 -- When a campaign is deleted its NPCs are kept: they leave the campaign and stay with their owner (hidden flags reset).
+-- Generated mob and boss NPCs are deleted.
 -- (The function keeps its old name so the trigger below needs no change.)
 create or replace function public.delete_npcs_with_campaign()
 returns trigger
 language plpgsql security definer set search_path = public
 as $$
 begin
+  delete from public.characters where campaign_id = old.id and public.is_mob_npc(is_npc, data);
   update public.characters set campaign_id = null, npc_visible = false, npc_sheet_hidden = false
   where campaign_id = old.id and is_npc;
   return old;
@@ -335,6 +345,7 @@ $$;
 revoke execute on function public.drop_from_encounter(uuid, uuid) from public, anon, authenticated;
 
 -- QM: take an NPC out of its campaign. It is not deleted: it stays with its owner, on their NPCs list.
+-- A mob or boss NPC is deleted instead.
 drop function if exists public.remove_npc(uuid);
 create or replace function public.unlink_npc(p_character uuid)
 returns void
@@ -342,11 +353,15 @@ language plpgsql security definer set search_path = public
 as $$
 declare c record;
 begin
-  select campaign_id, is_npc into c from public.characters where id = p_character;
+  select campaign_id, is_npc, data into c from public.characters where id = p_character;
   if not found or not c.is_npc or c.campaign_id is null or not public.is_campaign_qm(c.campaign_id) then
     raise exception 'Only a QM can take an NPC out of a campaign.';
   end if;
   perform public.drop_from_encounter(c.campaign_id, p_character);
+  if public.is_mob_npc(c.is_npc, c.data) then
+    delete from public.characters where id = p_character;
+    return;
+  end if;
   update public.characters set campaign_id = null, npc_visible = false, npc_sheet_hidden = false where id = p_character;
 end;
 $$;

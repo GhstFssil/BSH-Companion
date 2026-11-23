@@ -348,7 +348,7 @@
   .bar.top i { background: var(--ink-text); }
 
   .item { border: 2px solid var(--ink); padding: .4rem; margin-bottom: .6rem; }
-  .iline { display: grid; grid-template-columns: 1.7rem minmax(0, 1fr) 1.5rem 3rem 3.4rem 4.8rem; gap: .3rem; align-items: center; cursor: pointer; }
+  .iline { display: grid; grid-template-columns: 1.7rem minmax(0, 1fr) 2.2rem 3.4rem; gap: .3rem; align-items: center; cursor: pointer; }
   .iline input { padding: .5rem .3rem; border-width: 2px; }
   .advbox { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; margin: .3rem 0; }
   .advbox .btn { min-height: 0; padding: .35rem .5rem; }
@@ -371,8 +371,15 @@
   .drop-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; gap: .35rem; align-items: end; }
   .drop-row > :first-child { grid-column: 1 / -1; }
   .drop-row select { width: 100%; min-width: 0; }
+  .drop-carry { grid-column: 1 / -1; display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
+  .drop-carry select { width: auto; flex: 1 1 8rem; }
+  .item.loot { opacity: .8; }
   .atk { border: 2px solid var(--ink); padding: .4rem; margin-bottom: .6rem; display: flex; flex-direction: column; gap: .4rem; }
-  .atk .iline.atkl { grid-template-columns: minmax(0, 1fr) 5.5rem 4.8rem; }
+  .atk .iline.atkl { grid-template-columns: minmax(0, 1fr) 5.5rem 4.8rem; align-items: end; }
+  .atk .iline.atkl .fld { margin: 0; }
+  .iact .chg { display: flex; align-items: center; gap: .3rem; }
+  .iact .chg input { width: 3.4rem; padding: .45rem .2rem; text-align: center; }
+  .item.locked > .iline input, .item.locked > .iline textarea, .atk.locked input, .atk.locked textarea { border-style: dashed; }
   .atk textarea { min-height: 3.5rem; }
   .attacks { display: flex; flex-direction: column; gap: .2rem; }
   .ihead { cursor: default; margin: 0 .4rem .3rem; padding-right: .4rem; font-size: max(8px, calc(.56rem + var(--fs))); letter-spacing: .08em; text-transform: uppercase; opacity: .85; }

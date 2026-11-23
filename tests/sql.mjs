@@ -757,4 +757,21 @@ ok((await as('sam', `select count(*)::int c from campaign_members where campaign
   await as('kim', `select set_campaign_compendium($1,$2)`, [K, B]);
   ok(!(await as('kim', `delete from compendiums where id=$1`, [B])).error && (await as('kim', `select compendium_id from campaigns where id=$1`, [K])).rows[0].compendium_id === null, 'compendium: deleting it clears the campaign link');
 }
+{ // Release 4: a mob or boss NPC is deleted when it leaves its campaign; a plain NPC is kept
+  const M = (await as('kim', `insert into campaigns (name) values ('Mob pit') returning id`)).rows[0].id, mob = JSON.stringify({ info: { name: 'Ghoul 1', kind: 'mob' } }), boss = JSON.stringify({ info: { name: 'Lich', kind: 'boss' } });
+  await as('sam', `insert into campaign_members (campaign_id,user_id,role) values ($1,$2,'member')`, [M, ids.sam]);
+  const m1 = uuid(), m2 = uuid(), b1 = uuid(), p1 = uuid(), sm = uuid(), sp = uuid();
+  await as('kim', `select create_npc($1,$2,$3::jsonb)`, [M, m1, mob]); await as('kim', `select create_npc($1,$2,$3::jsonb)`, [M, m2, mob]);
+  await as('kim', `select create_npc($1,$2,$3::jsonb)`, [M, b1, boss]); await as('kim', `select create_npc($1,$2,'{}')`, [M, p1]);
+  const has = async (id) => (await db.query(`select 1 from characters where id=$1`, [id])).rows.length === 1;
+  ok(!(await as('kim', `select unlink_npc($1)`, [m1])).error && !(await has(m1)), 'mobs: REMOVE deletes a mob NPC');
+  ok(!(await as('kim', `select unlink_npc($1)`, [p1])).error && (await has(p1)), 'mobs: a plain NPC taken out is kept');
+  ok(err(await as('sam', `select unlink_npc($1)`, [m2]), /Only a QM/) && (await has(m2)), 'mobs: a player cannot delete a mob this way');
+  await as('kim', `update campaign_members set role='qm' where campaign_id=$1 and user_id=$2`, [M, ids.sam]);
+  await as('sam', `select create_npc($1,$2,$3::jsonb)`, [M, sm, mob]); await as('sam', `select create_npc($1,$2,'{}')`, [M, sp]);
+  await as('sam', `delete from campaign_members where campaign_id=$1 and user_id=$2`, [M, ids.sam]);
+  ok((await db.query(`select owner from characters where id=$1 and campaign_id=$2`, [sm, M])).rows[0]?.owner === ids.kim, 'mobs: a QM who leaves hands their mobs to another QM (they stay in the campaign)');
+  await as('kim', `delete from campaigns where id=$1`, [M]);
+  ok(!(await has(m2)) && !(await has(b1)), 'mobs: deleting the campaign deletes its mobs and bosses');
+}
 console.log(fails ? `${fails} FAILED of ${n}` : `ALL ${n} PASSED`); process.exit(fails ? 1 : 0);

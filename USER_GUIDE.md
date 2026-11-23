@@ -49,7 +49,9 @@ Sheets save automatically. The sheet has nine tabs:
 
 **Tracking HP and other points.** HP remaining is editable right on the sheet. AP, SP and EP have "remaining" boxes on the STATS tab (leave blank for full). The **Damage/Healing** box with **ACCEPT** adds its number to HP remaining: positive heals, negative hurts.
 
-**Items.** Tap an item to open it. You can change its quantity (**-1 / +1**), put it in your **LEFT HAND** or **RIGHT HAND** (one item per hand), or wear it on your **BODY** (only items ticked Wearable). Tick **Weapon** to get weapon fields (Type, Size, Weight, CR, Load Cost, Ammo, Effect, **Two-handed**, **Loaded**) and its **Attacks** list, and **Magic** for magic fields (Type, Attunement, Max Charges, Effect, Spellbook). **GIVE** passes an item to another character in your campaign.
+**Items.** Each item's line shows its name and, at the right, its quantity. Tap the item to open it: there you find its **Charges** (magic items only) and can change its quantity (**-1 / +1**), put it in your **LEFT HAND** or **RIGHT HAND** (one item per hand), or wear it on your **BODY** (only items ticked Wearable). **REMOVE** is at the end of that row. Tick **Weapon** to get weapon fields (Type, Size, Weight, CR, Load Cost, Ammo, Effect, **Two-handed**, **Loaded**) and its **Attacks** list, and **Magic** for magic fields (Type, Attunement, Max Charges, Effect, Spellbook). **GIVE** passes an item to another character in your campaign.
+
+**SAVE and EDIT.** Items, abilities, attacks and custom actions each have a **SAVE** button. SAVE locks the entry's fields so a stray tap can't change them, and it can't be removed while locked. On a locked item you can still change its quantity and charges, equip it and give it away. **EDIT** unlocks it. The same works in compendiums, and a compendium mob has **SAVE MOB** / **EDIT MOB** on its INFO tab, which locks every tab of the mob.
 
 **Attacks.** Every attack has a name, a cost (such as `2 AP`), an Attack Dmg formula, a range, a damage type and an effect. Your character's own attacks are on the ABILITIES tab (every character starts with **Unarmed Strike**) and are always in the Actions menu. A weapon's attacks are on its item card, under **ADD ATTACK**; they appear in the Actions menu only while the weapon is in your hand, and a **Two-handed** weapon must be in both hands. Older weapons were converted to one attack named after the weapon.
 
@@ -68,7 +70,9 @@ Sheets save automatically. The sheet has nine tabs:
 - **MOBS**: enemies and other NPCs. **ADD MOB** opens a new mob as a sheet; **MAKE MOB** turns one of your characters into a mob (its items become compendium items it always carries). **COPY** duplicates a mob.
 - **ABILITIES**: abilities, attacks and custom actions.
 
-A mob is a sheet with a few extras. On its INFO tab: **Mob** or **Boss**, and a **stat variation %** (each copy's HP, SP, RD, IB, EP, SA, DA, BP and AC moves up or down by a random amount within it). On TALENTS and SKILLS, the box after **±** next to each talent and proficiency is a range: "3 ± 1" gives each copy 2, 3 or 4. Instead of ITEMS a mob has **DROPS**: pick compendium items, each with a **Chance %** and a **Min** and **Max** amount. Every copy rolls each line on its own.
+A mob is a sheet with a few extras. On its INFO tab: **Mob** or **Boss**, and a **stat variation %** (each copy's HP, SP, RD, IB, EP, SA, DA, BP and AC moves up or down by a random amount within it). On TALENTS and SKILLS, the box after **±** next to each talent and proficiency is a range: "3 ± 1" gives each copy 2, 3 or 4. **Limits on the ranges** (INFO tab) can set the lowest and highest **Talent level** and **Proficiency level** (the totals) a copy may roll; the ranges are nudged to fit. Under **Looks**, a comma list such as `Male, Female` gives each copy one of them at random, and a lowest and highest **age**, **height** (in inches, written like 5'10") and **weight** roll a value for each copy. A mob's stats always come out as whole numbers, and mobs have no Explode, Totem or Legacy Tokens and no money.
+
+Instead of ITEMS a mob has **DROPS**: pick compendium items, each with a **Chance %** and a **Min** and **Max** amount. Every copy rolls each line on its own. **Carried** (ticked) means the mob has the item and can use it; choose whether it starts **Not equipped**, in the **Right hand**, **Left hand**, **Both hands**, or **Worn**. Unticked, the drop is loot only: it appears on the mob's ITEMS tab marked **LOOT**, but the mob never uses or equips it and its buffs don't apply.
 
 To use it: **FROM COMPENDIUM** (ITEMS tab) and **ADD FROM COMPENDIUM** (ABILITIES tab) on a sheet add a copy. A copy keeps a link to the compendium, and its **UPDATE FROM COMPENDIUM** button (inside the item or ability, or under the attack or custom action) replaces it with the compendium's latest version. An item keeps its quantity, charges and hands. **EXPORT COMPENDIUM** saves a compendium as a file, and **IMPORT COMPENDIUM** loads one as a new compendium. QMs: see "Campaign compendium" in section 6.
 
@@ -136,22 +140,23 @@ Everything above, plus:
 - **GIVE EXPLODE TOKENS**: tick the players, pick 1 to 3.
 - **ROLL DAMAGE**: for traps, spells and anything outside a normal attack. Pick the target, type a formula such as `BP+3+1D6` or `2D8+4`, and (if it uses BP) whose BP to use. Tick **Ignore AC** or **Critical** if they apply. **ROLL** shows the dice and the result, then **APPLY** deals it. Changing anything after a roll clears it, so you must roll again.
 - **ADD MAP** attaches one of the campaign's maps to the current encounter.
-- **MAKE MOBS**: pick an NPC to copy, choose Mob or Boss, a name, how many (1 to 20), a **variation %** (each copy's HP, SP, RD, IB, EP, SA, DA, BP and AC moves up or down by a random amount within it) and a **boost %** (every copy stronger, or weaker if negative; a boss starts at +50). The copies are hidden NPCs named "Name 1", "Name 2" and so on, marked MOB or BOSS on the roster.
+- **MAKE MOBS**: opens the campaign compendium at **ADD MOBS** (see "Campaign compendium" below). Mobs are made only from the compendium.
 - **CODEX** (everyone): mobs, bosses and items the party has come across. They are recorded on their own once players can see them (a shown mob or boss, any item on a sheet players can see). You can remove an entry with its REMOVE button, and it stays removed.
 
 **NPCs**
 - Make an NPC by opening any character's sheet in your campaign (even a player's), going to the INFO tab and tapping **MAKE NPC** twice. It moves to you as a hidden NPC and the player loses it.
 - Show or hide each NPC from the roster. **HIDE SHEET** lets players see an NPC's name but not open its sheet.
 - NPCs appear on your Characters page under **NPCs**. On an NPC's INFO tab: **MOVE NPC** (to another campaign you run), **GIVE CONTROL** (turns it into a player's ordinary character), **REMOVE FROM CAMPAIGN** (kept, not deleted), or **ADD TO CAMPAIGN** if it is currently in none.
+- Mobs and bosses are different: they live only in their campaign's roster, not on your Characters page. **REMOVE AND DELETE** on a mob's INFO tab (tap twice) deletes it for good, and deleting the campaign deletes its mobs.
 - You can roll and act for any NPC in an encounter.
 
 **Items.** Use the **Give an item** form on the campaign page to give an item to any player character or NPC.
 
 **Campaign compendium.** **COMPENDIUM** on the campaign page picks one of your compendiums for the campaign. Every QM of the campaign can use it, but only you (its owner) can change it, and players never see it.
-- **ADD MOBS**: pick a mob and how many (1 to 20). Each copy is a hidden NPC named after the mob with a number ("Goblin 1", "Goblin 2"...; the numbers carry on from any already in the campaign), with its talents, proficiencies and stats rolled within their ranges and its drops rolled.
+- **ADD MOBS**: pick a mob and how many (1 to 20). Each copy is a hidden NPC named after the mob with a number ("Goblin 1", "Goblin 2"...; the numbers carry on from any already in the campaign), with its talents, proficiencies, stats and looks rolled within their ranges and limits and its drops rolled (carried ones equipped as set).
 - **GIVE ITEM**: give a compendium item to any player character or NPC. The player gets it like any other gift.
 - **OPEN** shows the compendium itself.
-- A mob NPC made this way says on its INFO tab where it came from. **UPDATE FROM COMPENDIUM** there (tap twice) takes the mob's current version, rolling its ranges again, but keeps the NPC's name, damage, tokens and items.
+- A mob NPC made this way says on its INFO tab where it came from. **UPDATE FROM COMPENDIUM** there (tap twice) takes the mob's current version, rolling its ranges again, but keeps the NPC's name, sex, age, height, weight, damage, tokens and items.
 
 **Spawn Character.** **SPAWN CHARACTER** runs the turn-based character creation from the rulebook. Choose who the character is for (tick players, or none for an NPC), and everyone in the campaign is taken to the spawn page. Players take turns choosing a description, an ability, a fighting style, a weapon, a backstory and a motivation, then everyone adjusts talents and skills together. You can **SEND BACK ONE STEP** to veto a choice or **CANCEL SPAWN**. When it finishes, the new owner fills in a **Describe Your Character** card.
 

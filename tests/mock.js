@@ -3,6 +3,7 @@ const http = require('http'), crypto = require('crypto');
 const b64u = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
 function jwt(uid) { return `${b64u({ alg: 'HS256', typ: 'JWT' })}.${b64u({ sub: uid, role: 'authenticated', aud: 'authenticated', exp: Math.floor(Date.now() / 1000) + 3600 })}.sig`; }
 const uidOf = (req) => { try { return JSON.parse(Buffer.from((req.headers.authorization || '').replace('Bearer ', '').split('.')[1], 'base64url')).sub; } catch { return null; } };
+const isMobRow = (c) => !!(c && c.is_npc && c.data && c.data.info && (c.data.info.kind === 'mob' || c.data.info.kind === 'boss'));   // generated mobs are deleted when they leave their campaign
 
 function createMock() {
   var mockOrder;
@@ -497,6 +498,7 @@ function createMock() {
         }
         const what = p.endsWith('unlink_npc') ? 'take an NPC out of a campaign' : p.endsWith('move_npc') ? 'move an NPC' : 'give an NPC to a player';
         if (!c || !c.is_npc || !c.campaign_id || !isQ(c.campaign_id)) return P('Only a QM can ' + what + '.');
+        if (p.endsWith('unlink_npc') && isMobRow(c)) { drop(c.campaign_id); db.characters = db.characters.filter((x) => x !== c); return send(204); }
         if (p.endsWith('unlink_npc')) { drop(c.campaign_id); c.campaign_id = null; c.npc_visible = false; c.npc_sheet_hidden = false; return send(204); }
         if (p.endsWith('move_npc')) {
           if (!body.p_campaign || !isQ(body.p_campaign)) return P('You must be a QM of the campaign you move the NPC to.');
@@ -700,7 +702,7 @@ function createMock() {
           db.characters.forEach((c) => { if (c.campaign_id === row.campaign_id && c.is_npc && c.owner === row.user_id) c.owner = heir.user_id; });
           return null;
         };
-        const dropCampaign = (gid) => { db.characters.forEach((c) => { if (c.campaign_id === gid) { c.campaign_id = null; c.npc_visible = false; c.npc_sheet_hidden = false; } }); db.campaigns = db.campaigns.filter((x) => x.id !== gid); db.members = db.members.filter((m) => m.campaign_id !== gid); };
+        const dropCampaign = (gid) => { db.characters = db.characters.filter((c) => !(c.campaign_id === gid && isMobRow(c))); db.characters.forEach((c) => { if (c.campaign_id === gid) { c.campaign_id = null; c.npc_visible = false; c.npc_sheet_hidden = false; } }); db.campaigns = db.campaigns.filter((x) => x.id !== gid); db.members = db.members.filter((m) => m.campaign_id !== gid); };
 
         if (req.method === 'GET') {
           if (isG) return send(200, db.campaigns.slice().sort((a, b) => b.created_at.localeCompare(a.created_at)));
@@ -725,12 +727,13 @@ function createMock() {
         }
         if (req.method === 'DELETE' && isG) {
           const hit = db.campaigns.filter((g) => g.id === eq('id') && isQm(g.id, me));          // policy: QMs only
-          hit.forEach((g) => { db.characters.forEach((c) => { if (c.campaign_id === g.id) { c.campaign_id = null; c.npc_visible = false; c.npc_sheet_hidden = false; } }); db.campaigns = db.campaigns.filter((x) => x !== g); db.members = db.members.filter((m) => m.campaign_id !== g.id); });
+          hit.forEach((g) => { db.characters = db.characters.filter((c) => !(c.campaign_id === g.id && isMobRow(c))); db.characters.forEach((c) => { if (c.campaign_id === g.id) { c.campaign_id = null; c.npc_visible = false; c.npc_sheet_hidden = false; } }); db.campaigns = db.campaigns.filter((x) => x !== g); db.members = db.members.filter((m) => m.campaign_id !== g.id); });
           return reply(200, hit.map((g) => ({ id: g.id })));
         }
         if (req.method === 'DELETE') {
           const hit = db.members.filter((m) => m.campaign_id === eq('campaign_id') && m.user_id === eq('user_id') && (m.user_id === me || isQm(m.campaign_id, me)));
           for (const m of hit) { const e = handoff(m, true); if (e) return send(400, e); }
+          hit.forEach((m) => { db.characters = db.characters.filter((c) => !(c.campaign_id === m.campaign_id && c.owner === m.user_id && isMobRow(c))); });
           hit.forEach((m) => db.characters.forEach((c) => { if (c.campaign_id === m.campaign_id && c.owner === m.user_id) { c.campaign_id = null; c.npc_visible = false; c.npc_sheet_hidden = false; } }));
           db.members = db.members.filter((m) => !hit.includes(m));
           hit.forEach((m) => { if (!db.members.some((x) => x.campaign_id === m.campaign_id)) dropCampaign(m.campaign_id); });

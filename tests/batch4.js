@@ -73,31 +73,16 @@ async function scenario(label, makeAs) {
   R.click([...rHero().querySelectorAll('button')].find((x) => /^BLEEDING$/.test(x.textContent))); await wait(300);
   ok((await row(bR, hero.id)).ch.vitals.bleeding === 1, P('a QM sets Bleeding on a player character'));
 
-  // ----- mobs and bosses -----
-  const orc = mk(R, 'Orc'); orc.campaignId = G; orc.isNpc = true; orc.npcVisible = false;
-  orc.items = [{ name: 'Notched Axe', qty: 1, desc: 'Heavy and chipped.', weapon: true, weaponProps: { dmg: 'BP+2' }, buffs: [], magicProps: {} }];
-  await bR.createNpc(G, orc);
+  // ----- mobs and bosses (made from the compendium now; here made directly) -----
+  for (const [nm, kind] of [['Orc 1', 'mob'], ['Orc 2', 'mob'], ['Orc Warlord', 'boss']]) {
+    const m = mk(R, nm); m.campaignId = G; m.isNpc = true; m.npcVisible = false; m.info.kind = kind; m.info.mobBase = kind === 'boss' ? 'Orc Warlord' : 'Orc';
+    m.items = [{ name: 'Notched Axe', qty: 1, desc: 'Heavy and chipped.', weapon: true, weaponProps: { dmg: 'BP+2' }, buffs: [], magicProps: {} }];
+    await bR.createNpc(G, m);
+  }
   R.go('home'); await wait(30); R.go('campaign-' + G); await wait(300);
-  R.click(R.$('mobBtn')); await wait(60);
-  ok(!R.$('etModal').hidden && R.$('etTitle').textContent === 'Make mobs and bosses', P('MAKE MOBS opens the card'));
-  ok(![...R.$('mobTpl').options].some((o) => o.text === 'Hero'), P('only NPCs can be copied'));
-  R.$('mobTpl').value = orc.id; R.$('mobTpl').dispatchEvent(new R.w.Event('change', { bubbles: true }));
-  R.setv(R.$('mobCount'), '3'); R.setv(R.$('mobVary'), '10'); R.setv(R.$('mobBoost'), '0');
-  R.click(R.$('mobGo')); await wait(900);
-  let all = await rows(bR);
-  const mobs = all.filter((r) => r.ch.info.mobBase === 'Orc');
-  ok(mobs.length === 3 && mobs.map((r) => r.ch.info.name).sort().join() === 'Orc 1,Orc 2,Orc 3', P('three mobs Orc 1-3 were made (' + mobs.map((r) => r.ch.info.name) + ')'));
-  const hpIx = R.w.BSH.STATS.findIndex((x) => x.key === 'HP'), apIx = R.w.BSH.STATS.findIndex((x) => x.key === 'AP');
-  ok(mobs.every((r) => r.ch.isNpc && !r.ch.npcVisible && r.ch.info.kind === 'mob' && r.ch.id !== orc.id), P('mobs are hidden NPCs of kind mob'));
-  ok(mobs.every((r) => Math.abs(r.ch.statAdjPct[hpIx]) <= 10 && r.ch.statAdjPct[apIx] === 0 && Math.abs(r.ch.statAdjPct[0]) <= 10), P('HP varies by at most 10%, AP is left alone'));
-  ok(mobs.every((r) => r.ch.items.length === 1 && r.ch.items[0].name === 'Notched Axe') && mobs.every((r) => r.ch.vitals.damage == null), P('items come along, vitals start fresh'));
-  R.setv(R.$('mobBoost'), '50'); R.setv(R.$('mobCount'), '1'); R.setv(R.$('mobVary'), '0'); R.$('mobKind').value = 'boss';
-  R.setv(R.$('mobBoost'), '50'); R.setv(R.$('mobName'), 'Orc Warlord'); R.setv(R.$('mobCount'), '1'); R.setv(R.$('mobVary'), '0');
-  R.click(R.$('mobGo')); await wait(600);
-  all = await rows(bR);
-  const boss = all.find((r) => r.ch.info.name === 'Orc Warlord');
-  ok(boss && boss.ch.statAdjPct[hpIx] === 50 && boss.ch.statAdjPct[apIx] === 0, P('a boss gets the +50% boost with no variation'));
-  ok(boss && boss.ch.info.kind === 'boss', P('the boss is marked as a boss'));
+  R.click(R.$('mobBtn')); await wait(300);
+  ok(!R.$('etModal').hidden && R.$('etTitle').textContent === 'Campaign compendium', P('MAKE MOBS opens the campaign compendium card'));
+  ok(!R.$('mobTpl'), P('the old copy-an-NPC mob maker is gone'));
   const bad = (await bS.listCampaignCharacters(G)).filter((r) => r.ch.isNpc);
   ok(bad.length === 0, P('players do not see the hidden mobs'));
   R.click(buttons(R, /^CLOSE$/)[0]); await wait(30);

@@ -111,7 +111,7 @@ async function scenario(label, makeAs) {
   await kick(V);
   ok(await waitFor(() => cardOf(V, 'Sword')), P('a gift shows up on an open sheet'));
   expand(cardOf(V, 'Sword'));
-  ok(cardOf(V, 'Sword').querySelector('textarea[aria-label="Item description"]').value === 'sharp' && cardOf(V, 'Sword').querySelectorAll('.iline input.num')[1].value === '2', P('with its charges and description'));
+  ok(cardOf(V, 'Sword').querySelector('textarea[aria-label="Item description"]').value === 'sharp' && cardOf(V, 'Sword').querySelector('[aria-label="Charges (0 to Max Charges)"]').value === '2', P('with its charges and description'));
   await wait(700);
   ok((await stored(V, gamma)).items.some((x) => x.name === 'Sword'), P('and is saved'));
   ok(await rejects(bS.giveItem(alpha.id, gamma.id, { name: 'Sword', qty: 1 }), /./) === false, P('(Alpha has Sword, so the API itself allowed it)'));

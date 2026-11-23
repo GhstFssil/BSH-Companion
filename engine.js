@@ -92,6 +92,7 @@
   function itemBuffs(ch) {
     const talent = Array(9).fill(0), skill = Array(36).fill(0), list = [];
     ((ch && ch.items) || []).forEach((it) => {
+      if (it && it.loot) return;   // a mob's loot is not carried: its buffs never apply
       const held = !!(it && (it.eqL || it.eqR)), worn = !!(it && it.eqB);
       ((it && Array.isArray(it.buffs)) ? it.buffs : []).forEach((b) => {
         if (!b || typeof b !== 'object') return;
@@ -149,7 +150,8 @@
     // Stat helpers (Aggregate!M17:N22) and totals (Aggregate!D17:H22).
     // NOTE: faithful to the sheet, the +/- # adjustment is added in the helper AND again in the total.
     const statHelper = base.map((b, i) => b + statBuff[i] + statAdj[i]);
-    const stat = statHelper.map((h, i) => h + statAdj[i] + h * statPct[i] + h * overall);
+    const mob = !!(ch.info && (ch.info.kind === 'mob' || ch.info.kind === 'boss'));   // a mob's or boss's stats (variation, % changes) round to whole numbers
+    const stat = statHelper.map((h, i) => { const x = h + statAdj[i] + h * statPct[i] + h * overall; return mob ? round(x) : x; });
 
     const subLevels = [];
     const classLevels = CLASSES.map((c) => {

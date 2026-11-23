@@ -17,7 +17,7 @@ const { ok, done } = checker();
   const labels = [...card(0).querySelectorAll('.wpgrid .lbl')].map((x) => x.textContent);
   ok(labels.join('|') === 'Type|Attunement|Max Charges|Effect', 'magic fields: ' + labels.join('|'));
   ok(!!card(0).querySelector('.wpgrid input[type=checkbox][aria-label="Spellbook"]'), 'Spellbook checkbox');
-  const ch = () => card(0).querySelectorAll('.iline input.num')[1];
+  const ch = () => card(0).querySelector('[aria-label="Charges (0 to Max Charges)"]');
   ok(!!ch(), 'charges field appears for magic item');
   ok(ch().value === '0' && ch().max === '0', 'old 7 charges clamped to max 0: ' + ch().value);
   ev(card(0).querySelector('[aria-label="Max Charges"]'), '5'); await wait(20);

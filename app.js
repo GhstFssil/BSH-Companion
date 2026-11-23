@@ -893,6 +893,7 @@
   function etRefresh() { etSteppers.forEach((s) => { if (s.el.isConnected) s.render(); else etSteppers.delete(s); }); }
   function etStepper(c) {
     const el = h('div', { class: 'etstep', 'data-et': c.id });
+    if (isMob(c)) { el.hidden = true; return el; }   // mobs hold no Explode Tokens
     const s = { el, render() {
       const held = etHeld(etLive(c)), want = Math.min(held, etDeclared.get(c.id) || 0);
       etDeclared.set(c.id, want);
@@ -2259,71 +2260,10 @@
         h('button', { class: 'btn small', type: 'button', text: 'CANCEL', onclick: () => { spawnForOpen = false; renderSpawnBox(g, me, qm); } })),
       msg);
   }
-  /* ----- Mobs and bosses: a QM makes several varied copies of an NPC ----- */
-  const MOB_STATS = ['HP', 'SP', 'RD', 'IB', 'EP', 'SA', 'DA', 'BP', 'AC'];   // stats that vary and get the boost (not AP, Weight Class or Carrying Capacity)
-  // One copy of a template: a fresh id and name, fresh vitals, and each combat stat's percent adjustment moved by the boost and a random amount within +-vary
-  function mobFrom(tpl, name, base, kind, vary, boost) {
-    const c = normalizeChar(JSON.parse(JSON.stringify(tpl)));
-    ['campaignId', 'isNpc', 'npcVisible', 'sheetHidden', 'owner', 'ownerId'].forEach((k) => { delete c[k]; });
-    c.id = uuid(); c.created = c.updated = Date.now();
-    c.info = Object.assign({}, c.info, { name, kind, mobBase: base, alive: true });
-    c.vitals = Object.assign({}, c.vitals, { damage: null, tempHp: null, apRemaining: null, spRemaining: null, epRemaining: null });
-    ['bt', 'wt', 'bleeding', 'restCd', 'turnMark', 'nextCrit', 'apPenalty'].forEach((k) => { delete c.vitals[k]; });
-    c.statAdjPct = Array.from({ length: 12 }, (_, i) => Number(c.statAdjPct && c.statAdjPct[i]) || 0);
-    BSH.STATS.forEach((st, i) => {
-      if (!MOB_STATS.includes(st.key)) return;
-      c.statAdjPct[i] = r2(c.statAdjPct[i] + boost + (vary > 0 ? rollDie(2 * vary + 1) - vary - 1 : 0));
-    });
-    return c;
-  }
-  function mobCard(g) {
-    const rows = state.campChars.filter((r) => !r.stub && r.ch.isNpc);
-    $('etTitle').textContent = 'Make mobs and bosses';
-    const close = h('button', { class: 'btn small', type: 'button', id: 'etCancel', text: 'CLOSE', onclick: () => { $('etModal').hidden = true; $('etBody').replaceChildren(); } });
-    if (!rows.length) {
-      $('etBody').replaceChildren(h('p', { class: 'note', text: 'Make an NPC first (NEW NPC) and set it up the way you want a typical one to be. Mobs and bosses are varied copies of an NPC you pick.' }), close);
-      $('etModal').hidden = false; $('etTitle').focus({ preventScroll: true }); return;
-    }
-    const tpl = h('select', { id: 'mobTpl', 'aria-label': 'NPC to copy' }, rows.map((r) => h('option', { value: r.ch.id, text: r.ch.info.name || 'Unnamed NPC' })));
-    const kind = h('select', { id: 'mobKind', 'aria-label': 'Mob or boss' }, h('option', { value: 'mob', text: 'Mob' }), h('option', { value: 'boss', text: 'Boss' }));
-    const base = h('input', { type: 'text', id: 'mobName', maxlength: '50', class: 'num', 'aria-label': 'Name for the copies', autocomplete: 'off' });
-    const count = h('input', { type: 'number', id: 'mobCount', min: '1', max: '20', class: 'num', 'aria-label': 'How many' });
-    const vary = h('input', { type: 'number', id: 'mobVary', min: '0', max: '50', class: 'num', 'aria-label': 'Variation percent' });
-    const boost = h('input', { type: 'number', id: 'mobBoost', min: '-90', max: '300', class: 'num', 'aria-label': 'Stat boost percent' });
-    const msg = h('p', { class: 'skill-out', role: 'status', id: 'mobMsg' });
-    const syncName = () => { const r = rows.find((x) => x.ch.id === tpl.value); base.value = r ? (r.ch.info.mobBase || r.ch.info.name || '') : ''; };
-    const syncKind = () => { const boss = kind.value === 'boss'; count.value = boss ? '1' : '3'; vary.value = boss ? '5' : '10'; boost.value = boss ? '50' : '0'; };
-    tpl.addEventListener('change', syncName); kind.addEventListener('change', syncKind);
-    syncName(); syncKind();
-    const make = h('button', { class: 'btn', type: 'button', id: 'mobGo', text: 'MAKE THEM', onclick: async () => {
-      const src = rows.find((x) => x.ch.id === tpl.value), n = Math.floor(Number(count.value)), v = Math.floor(Number(vary.value)), b = Number(boost.value), name = base.value.trim().slice(0, 50);
-      if (!src || !name) { msg.textContent = 'Pick an NPC and give the copies a name.'; return; }
-      if (!(n >= 1 && n <= 20) || !(v >= 0 && v <= 50) || !(b >= -90 && b <= 300)) { msg.textContent = 'How many is 1 to 20, variation 0 to 50, boost -90 to 300.'; return; }
-      make.disabled = true; msg.textContent = '';
-      const have = state.campChars.filter((r) => !r.stub && r.ch.info && r.ch.info.mobBase === name).length, made = [];
-      try {
-        for (let i = 1; i <= n; i++) {
-          const nm = have === 0 && n === 1 ? name : name + ' ' + (have + i), c = mobFrom(src.ch, nm, name, kind.value, v, b);
-          await backend.createNpc(g.id, c);
-          c.campaignId = g.id; c.isNpc = true; c.npcVisible = false; state.chars.unshift(c); made.push(nm);
-        }
-        msg.textContent = 'Made ' + made.join(', ') + '. They are hidden; show each to the players from the roster.';
-      } catch (e) { msg.textContent = (made.length ? 'Made ' + made.join(', ') + ', then stopped: ' : '') + e.message; }
-      make.disabled = false;
-      try { const rows2 = await backend.listCampaignCharacters(g.id); state.campChars = rows2; state.campChars.forEach((r) => { r.ch = normalizeChar(r.ch); }); state.campCharsFor = g.id; renderCampaignPage(); } catch (e) { /* the next refresh will show them */ }
-    } });
-    $('etBody').replaceChildren(
-      h('p', { class: 'note', text: 'Copies an NPC several times. Each copy gets its own random change of up to the variation percent on HP, SP, RD, IB, EP, SA, DA, BP and AC, plus the boost. The copies are NPCs, hidden from the players until you show them.' }),
-      h('label', { class: 'fld' }, h('span', { class: 'lbl', text: 'Copy this NPC' }), tpl),
-      h('label', { class: 'fld' }, h('span', { class: 'lbl', text: 'Kind' }), kind),
-      h('label', { class: 'fld' }, h('span', { class: 'lbl', text: 'Name' }), base),
-      h('label', { class: 'fld' }, h('span', { class: 'lbl', text: 'How many' }), count),
-      h('label', { class: 'fld' }, h('span', { class: 'lbl', text: 'Variation % (each stat, up or down)' }), vary),
-      h('label', { class: 'fld' }, h('span', { class: 'lbl', text: 'Boost % (all of them stronger, or weaker if negative)' }), boost),
-      make, msg, close);
-    $('etModal').hidden = false; $('etTitle').focus({ preventScroll: true });
-  }
-  function mobButton(g) { return h('button', { class: 'btn small', type: 'button', id: 'mobBtn', text: 'MAKE MOBS', onclick: () => mobCard(g) }); }
+  /* ----- Mobs and bosses: made from the campaign compendium (ADD MOBS in compCard) ----- */
+  const MOB_STATS = ['HP', 'SP', 'RD', 'IB', 'EP', 'SA', 'DA', 'BP', 'AC'];   // stats that vary (not AP, Weight Class or Carrying Capacity)
+  const isMob = (c) => !!(c && c.info && (c.info.kind === 'mob' || c.info.kind === 'boss'));
+  function mobButton(g) { return h('button', { class: 'btn small', type: 'button', id: 'mobBtn', text: 'MAKE MOBS', onclick: async () => { await compCard(g); const m = $('ccMob'); if (m) { if (m.scrollIntoView) m.scrollIntoView({ block: 'center' }); m.focus({ preventScroll: true }); } } }); }
 
   /* ----- Campaign codex: mobs and items the party has seen ----- */
   // Anything the players can see (a shown mob or boss NPC, any item on a visible sheet) is recorded the first time any member's app notices it.
@@ -2949,7 +2889,7 @@
   /* ================= Characters list ================= */
   function renderCharList() {
     const all = state.chars.slice().sort((a, b) => (b.updated || 0) - (a.updated || 0));
-    const pcs = all.filter((c) => !c.isNpc), npcs = all.filter((c) => c.isNpc);
+    const pcs = all.filter((c) => !c.isNpc), npcs = all.filter((c) => c.isNpc && !(isMob(c) && c.campaignId));   // mobs live in their campaign's roster only
     const fill = (box, list) => {
       box.replaceChildren();
       list.forEach((c) => {
@@ -3037,7 +2977,7 @@
     if (typeof raw.tokenImage === 'string' && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(raw.tokenImage) && raw.tokenImage.length <= 100000) c.tokenImage = raw.tokenImage;
     return c;
   }
-  const withRef = (o, src) => { const r = cleanRef(src && src.cref); if (r) o.cref = r; return o; };
+  const withRef = (o, src) => { const r = cleanRef(src && src.cref); if (r) o.cref = r; if (src && src.locked === true) o.locked = true; return o; };   // also keeps the SAVE / EDIT lock
   // One item from a file (a sheet or a compendium), rebuilt field by field
   function sanitizeItem(it) {
     const str = (v, n) => (v == null ? '' : String(v).slice(0, n));
@@ -3049,6 +2989,7 @@
     if (o.eqB) { o.eqL = false; o.eqR = false; }
     o.charges = o.magic && num(it.charges) !== null ? num(it.charges) : null; o.charges = clampCharges(Object.assign({}, o, { charges: o.charges }));
     if (o.weapon) { o.attacks = attacksFor(o.name, it.attacks, it.weaponProps); if (typeof it.twoHanded === 'boolean') o.twoHanded = it.twoHanded; o.loaded = it.loaded === true; fixWeapon(o); }
+    if (it.loot === true) { o.loot = true; o.eqL = o.eqR = o.eqB = false; }   // a mob's loot: not carried, never in a hand or worn
     return withRef(o, it);
   }
   function importCharacterText(text) {
@@ -3232,6 +3173,8 @@
   const okCid = (x) => typeof x === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(x);
   const clampNum = (v, lo, hi, d) => { if (v === '' || v == null || typeof v === 'object') return d; const n = Number(v); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d; };
   const rangeOf = (v) => { const n = Math.floor(clampNum(v, 0, 100, 0)); return n > 0 ? n : null; };
+  // Where a carried drop starts: not equipped, in a hand, in both hands, or worn on the body
+  const DROP_EQUIP = [['', 'Not equipped'], ['R', 'Right hand'], ['L', 'Left hand'], ['LR', 'Both hands'], ['B', 'Worn (body)']];
   function cleanMob(m) {
     m = m && typeof m === 'object' ? m : {};
     const ch = sanitizeImport(m.ch && typeof m.ch === 'object' ? m.ch : {});
@@ -3239,19 +3182,28 @@
     ch.info.name = String(ch.info.name || '').trim().slice(0, 50) || 'Unnamed mob';
     const v = m.var && typeof m.var === 'object' ? m.var : {};
     const arrOf = (a, n) => Array.from({ length: n }, (_, i) => rangeOf(Array.isArray(a) ? a[i] : null));
-    return { cid: okCid(m.cid) ? m.cid : uuid(), kind: m.kind === 'boss' ? 'boss' : 'mob', ch,
-      var: { prof: arrOf(v.prof, 36), talents: arrOf(v.talents, 9), statPct: Math.floor(clampNum(v.statPct, 0, 50, 0)) },
+    const lim = (x, hi) => { const n = clampNum(x, 0, hi, null); return n == null ? null : Math.floor(n); };
+    const pair = (lo, hi, top) => { let a = lim(lo, top), b = lim(hi, top); if (a != null && b != null && b < a) [a, b] = [b, a]; return [a, b]; };
+    const [tMin, tMax] = pair(v.talentMin, v.talentMax, 9999), [pMin, pMax] = pair(v.profMin, v.profMax, 9999);
+    const r = m.rand && typeof m.rand === 'object' ? m.rand : {};
+    const [aMin, aMax] = pair(r.ageMin, r.ageMax, 9999), [hMin, hMax] = pair(r.heightMin, r.heightMax, 999), [wMin, wMax] = pair(r.weightMin, r.weightMax, 99999);
+    const out = { cid: okCid(m.cid) ? m.cid : uuid(), kind: m.kind === 'boss' ? 'boss' : 'mob', ch,
+      var: { prof: arrOf(v.prof, 36), talents: arrOf(v.talents, 9), statPct: Math.floor(clampNum(v.statPct, 0, 50, 0)), talentMin: tMin, talentMax: tMax, profMin: pMin, profMax: pMax },
+      rand: { sex: String(r.sex == null ? '' : r.sex).slice(0, 100), ageMin: aMin, ageMax: aMax, heightMin: hMin, heightMax: hMax, weightMin: wMin, weightMax: wMax },
       drops: (Array.isArray(m.drops) ? m.drops : []).filter((d) => d && typeof d === 'object').slice(0, 50).map((d) => {
         const min = Math.floor(clampNum(d.min, 0, 9999, 1));
-        return { e: okCid(d.e) ? d.e : '', chance: clampNum(d.chance, 0, 100, 100), min, max: Math.max(min, Math.floor(clampNum(d.max, 0, 9999, min))) };
+        return { e: okCid(d.e) ? d.e : '', chance: clampNum(d.chance, 0, 100, 100), min, max: Math.max(min, Math.floor(clampNum(d.max, 0, 9999, min))),
+          carry: d.carry !== false, equip: d.carry !== false && DROP_EQUIP.some(([k]) => k === d.equip) ? d.equip : '' };
       }) };
+    if (m.locked === true) out.locked = true;
+    return out;
   }
   // Rebuilds a compendium's data field by field (on import, and whenever it is loaded), so nothing odd ends up in it
   function cleanBook(raw) {
     const d = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
     const str = (v, n) => (v == null ? '' : String(v).slice(0, n));
     const seen = new Set(), list = (k) => (Array.isArray(d[k]) ? d[k] : []).filter((x) => x && typeof x === 'object').slice(0, BOOK_KINDS[k]);
-    const id = (o, src) => { o.cid = okCid(src.cid) && !seen.has(src.cid) ? src.cid : uuid(); seen.add(o.cid); return o; };
+    const id = (o, src) => { o.cid = okCid(src.cid) && !seen.has(src.cid) ? src.cid : uuid(); seen.add(o.cid); if (src.locked === true) o.locked = true; return o; };
     return {
       v: 1,
       items: list('items').map((it) => { const o = id(sanitizeItem(it), it); delete o.cref; o.eqL = o.eqR = o.eqB = false; delete o.uid; delete o.loaded; return o; }),
@@ -3368,13 +3320,35 @@
     c.vitals = Object.assign({}, c.vitals, { damage: null, tempHp: null, apRemaining: null, spRemaining: null, epRemaining: null });
     ['bt', 'wt', 'bleeding', 'restCd', 'turnMark', 'nextCrit', 'apPenalty'].forEach((k) => { delete c.vitals[k]; });
     const spread = (v, r) => (r > 0 ? v + rollDie(2 * r + 1) - r - 1 : v);
-    c.prof = Array.from({ length: 36 }, (_, i) => { const v = c.prof && c.prof[i], r = mob.var.prof[i]; return r ? Math.max(0, spread(Number(v) || 0, r)) : v == null ? null : v; });
-    c.talents = Array.from({ length: 9 }, (_, i) => { const v = c.talents && c.talents[i], r = mob.var.talents[i]; return r ? Math.max(0, spread(v == null || v === '' ? BSH.DEFAULT_TALENT : Number(v) || 0, r)) : v; });
+    const tBase = [], pBase = [];
+    c.prof = Array.from({ length: 36 }, (_, i) => { const v = c.prof && c.prof[i], r = mob.var.prof[i]; pBase[i] = Number(v) || 0; return r ? Math.max(0, spread(pBase[i], r)) : v == null ? null : v; });
+    c.talents = Array.from({ length: 9 }, (_, i) => { const v = c.talents && c.talents[i], r = mob.var.talents[i]; tBase[i] = v == null || v === '' ? BSH.DEFAULT_TALENT : Number(v) || 0; return r ? Math.max(0, spread(tBase[i], r)) : v; });
+    keepTotal(c.talents, tBase, mob.var.talents, mob.var.talentMin, mob.var.talentMax);
+    keepTotal(c.prof, pBase, mob.var.prof, mob.var.profMin, mob.var.profMax);
+    rollLooks(c, mob.rand);
     const vary = mob.var.statPct || 0;
     c.statAdjPct = Array.from({ length: 12 }, (_, i) => Number(c.statAdjPct && c.statAdjPct[i]) || 0);
     if (vary > 0) BSH.STATS.forEach((st, i) => { if (MOB_STATS.includes(st.key)) c.statAdjPct[i] = r2(c.statAdjPct[i] + rollDie(2 * vary + 1) - vary - 1); });
+    ['explodeTokens', 'legacyTokens', 'totemTokens', 'money'].forEach((k) => { delete c.info[k]; });   // mobs have none of these
     c.items = rollDrops(d, mob, compId);
     return c;
+  }
+  // Total Talent / Proficiency level floor and ceiling: nudges the varied entries one point at a time (never past their own ranges) until the total fits
+  function keepTotal(vals, base, ranges, lo, hi) {
+    const tot = () => vals.reduce((t, x) => t + (Number(x) || 0), 0);
+    const pick = (up) => { const ok = vals.map((x, i) => i).filter((i) => ranges[i] && (up ? (Number(vals[i]) || 0) < base[i] + ranges[i] : (Number(vals[i]) || 0) > Math.max(0, base[i] - ranges[i]))); return ok.length ? ok[Math.floor(Math.random() * ok.length)] : -1; };
+    for (let n = 0; n < 5000 && lo != null && tot() < lo; n++) { const i = pick(true); if (i < 0) break; vals[i] = (Number(vals[i]) || 0) + 1; }
+    for (let n = 0; n < 5000 && hi != null && tot() > hi; n++) { const i = pick(false); if (i < 0) break; vals[i] = (Number(vals[i]) || 0) - 1; }
+  }
+  // Random sex (one from the list), age, height (inches, written 5'10") and weight, where the mob sets them
+  function rollLooks(c, rd) {
+    if (!rd) return;
+    const roll = (a, b) => (a == null || b == null ? null : a + Math.floor(Math.random() * (b - a + 1)));
+    const sexes = String(rd.sex || '').split(',').map((x) => x.trim()).filter(Boolean);
+    if (sexes.length) c.info.sex = sexes[Math.floor(Math.random() * sexes.length)].slice(0, 20);
+    const age = roll(rd.ageMin, rd.ageMax); if (age != null) c.info.age = String(age);
+    const ht = roll(rd.heightMin, rd.heightMax); if (ht != null) c.info.height = Math.floor(ht / 12) + "'" + (ht % 12) + '"';
+    const wt = roll(rd.weightMin, rd.weightMax); if (wt != null) c.info.weight = wt;
   }
   function rollDrops(d, mob, compId) {
     const out = [];
@@ -3383,9 +3357,17 @@
       if (!src || !(Math.random() * 100 < dr.chance)) return;
       const lo = Math.min(dr.min, dr.max), hi = Math.max(dr.min, dr.max), q = lo + Math.floor(Math.random() * (hi - lo + 1));
       if (q < 1) return;
-      const same = out.find((x) => x.cref && x.cref.e === src.cid);
+      const loot = dr.carry === false;
+      const same = out.find((x) => x.cref && x.cref.e === src.cid && !!x.loot === loot);
       if (same) { same.qty = effQty(same) + q; return; }
       const it = copyFrom('items', src, compId); it.qty = q; it.charges = clampCharges(Object.assign({}, it, { charges: it.magic ? maxOf(it) : null }));
+      if (loot) it.loot = true;
+      else if (dr.equip === 'B') { if (it.wearable) it.eqB = true; }
+      else if (dr.equip) {   // a hand holds one thing: later drops for the same hand take it
+        const hands = dr.equip === 'LR' || (it.weapon && it.twoHanded) ? ['eqL', 'eqR'] : [dr.equip === 'L' ? 'eqL' : 'eqR'];
+        out.forEach((x) => { hands.forEach((k) => { x[k] = false; }); });
+        hands.forEach((k) => { it[k] = true; });
+      }
       out.push(it);
     });
     return out;
@@ -3406,7 +3388,7 @@
     return [sec('Compendium'),
       h('p', { class: 'note', style: 'text-align:left', id: 'mobRefText', text: m ? 'Made from ' + mobLabel(m) + ' in the compendium ' + b.name + '.' : compFor ? 'Made from a compendium mob that is gone or that you cannot see.' : 'Made from a compendium mob.' }),
       m && !cur.viewOnly ? confirmButton('UPDATE FROM COMPENDIUM', 'TAP AGAIN TO UPDATE', () => applyMobUpdate(cur.ch, b, m)) : null,
-      m && !cur.viewOnly ? h('p', { class: 'hint', text: "Takes the mob's current talents, skills, stats, abilities, attacks and story, rolling its ranges again. Keeps this one's name, damage, tokens and items." }) : null].filter(Boolean);
+      m && !cur.viewOnly ? h('p', { class: 'hint', text: "Takes the mob's current talents, skills, stats, abilities, attacks and story, rolling its ranges again. Keeps this one's name, sex, age, height, weight, damage, tokens and items." }) : null].filter(Boolean);
   }
   const SHEET_PARTS = ['talents', 'totemTalents', 'buffTalents', 'prof', 'totemProf', 'skillBuff', 'skillAdj', 'skillAdjPct', 'statBuff', 'statAdj', 'statAdjPct',
     'abilities', 'attacks', 'customActions', 'appearance', 'backstory', 'motivation'];
@@ -3414,7 +3396,7 @@
     const fresh = rollMob(b.data, m, c.info.name, b.id);
     SHEET_PARTS.forEach((k) => { c[k] = fresh[k]; });
     if (fresh.tokenImage) c.tokenImage = fresh.tokenImage;
-    const keep = {}; ['name', 'alive', 'incarnation', 'totemTokens', 'explodeTokens', 'legacyTokens', 'spiritualGuidance', 'money'].forEach((k) => { keep[k] = c.info[k]; });
+    const keep = {}; ['name', 'alive', 'incarnation', 'spiritualGuidance', 'sex', 'age', 'height', 'weight'].forEach((k) => { keep[k] = c.info[k]; });
     c.info = Object.assign({}, fresh.info, keep);
     const tab = 'info', vo = cur.viewOnly;
     touch(); openSheet(c, vo); showTab(tab);
@@ -3563,25 +3545,46 @@
     kind.addEventListener('change', () => { m.kind = kind.value === 'boss' ? 'boss' : 'mob'; touch(); });
     return [
       sec('Mob'),
+      cur.viewOnly ? null : h('div', { class: 'iact' }, mobLockButton(), h('span', { class: 'hint', text: m.locked ? 'Saved and locked. EDIT MOB to change it.' : 'SAVE MOB locks every tab against accidental changes.' })),
       h('p', { class: 'hint', text: 'A template. Each copy added to a campaign is named after it with a number (' + (m.ch.info.name || 'Goblin') + ' 1, ' + (m.ch.info.name || 'Goblin') + ' 2, ...) and starts hidden from the players. Ranges on the TALENTS and SKILLS tabs vary each copy; the DROPS tab is what it may carry.' }),
       h('div', { class: 'grid2' },
         field('Name', txtIn('info.name', 'Mob name', 50), 'span2'),
         field('Kind', kind),
         field('Stat variation % (HP, SP, RD, IB, EP, SA, DA, BP, AC)', numBox(() => m.var.statPct || null, (v) => { m.var.statPct = v || 0; }, 'Stat variation percent', 0, 50, '0')),
-        field('Species', txtIn('info.species', 'Species', 30)),
+        field('Species', txtIn('info.species', 'Species', 30))),
+      sec('Limits on the ranges'),
+      h('p', { class: 'hint', text: 'Optional. However the TALENTS and SKILLS ranges roll, each copy\'s Talent level and Proficiency level (the totals) stay between these.' }),
+      h('div', { class: 'grid2' },
+        field('Talent level at least', numBox(() => m.var.talentMin, (v) => { m.var.talentMin = v; }, 'Talent level floor', 0, 9999, 'none')),
+        field('Talent level at most', numBox(() => m.var.talentMax, (v) => { m.var.talentMax = v; }, 'Talent level ceiling', 0, 9999, 'none')),
+        field('Proficiency level at least', numBox(() => m.var.profMin, (v) => { m.var.profMin = v; }, 'Proficiency level floor', 0, 9999, 'none')),
+        field('Proficiency level at most', numBox(() => m.var.profMax, (v) => { m.var.profMax = v; }, 'Proficiency level ceiling', 0, 9999, 'none'))),
+      sec('Looks'),
+      h('p', { class: 'hint', text: 'Fixed values, or random ones for each copy: list several sexes separated by commas (one is picked), and give a lowest and highest age, height and weight. A random value replaces the fixed one.' }),
+      h('div', { class: 'grid2' },
         field('Sex', txtIn('info.sex', 'Sex', 20)),
+        field('Random sex (comma list)', looksText(m.rand, 'sex', 'Random sex choices')),
         field('Age', txtIn('info.age', 'Age', 20)),
+        field('Random age', looksRange(m.rand, 'age', 'age', 9999)),
         field('Height', txtIn('info.height', 'Height', 20)),
+        field('Random height (inches)', looksRange(m.rand, 'height', 'height in inches', 999)),
         field('Weight', numIn('info.weight', 'Weight', '0')),
-        field('Money', txtIn('info.money', 'Money', 30))),
+        field('Random weight', looksRange(m.rand, 'weight', 'weight', 99999))),
       sec('Map token'),
-      tokenImageField(),
-      sec('Tokens'),
-      h('div', { class: 'grid3' },
-        field('Explode tokens', numIn('info.explodeTokens', 'Explode tokens')),
-        field('Totem tokens', numIn('info.totemTokens', 'Totem tokens')),
-        field('Legacy tokens', numIn('info.legacyTokens', 'Legacy tokens')))
-    ];
+      tokenImageField()
+    ].filter(Boolean);
+  }
+  function looksText(rd, k, label) {
+    const el = h('input', { type: 'text', maxlength: '100', 'aria-label': label, placeholder: 'Male, Female', autocomplete: 'off' });
+    el.value = rd[k] || '';
+    el.addEventListener('input', () => { rd[k] = el.value.slice(0, 100); touch(); });
+    return el;
+  }
+  function looksRange(rd, k, label, hi) {
+    return h('div', { class: 'varrow' },
+      numBox(() => rd[k + 'Min'], (v) => { rd[k + 'Min'] = v; }, 'Lowest ' + label, 0, hi, 'from'),
+      h('span', { class: 'pm', text: '-' }),
+      numBox(() => rd[k + 'Max'], (v) => { rd[k + 'Max'] = v; }, 'Highest ' + label, 0, hi, 'to'));
   }
   // A mob's DROPS tab: compendium items, each with a chance and a quantity range, rolled separately for every copy
   function panelDrops() {
@@ -3601,18 +3604,29 @@
         lbl('CHANCE %', numBox(() => d.chance, (v) => { d.chance = v == null ? 0 : v; }, 'Chance percent', 0, 100, '0')),
         lbl('MIN', numBox(() => d.min, (v) => { d.min = v == null ? 0 : v; }, 'Fewest', 0, 9999, '1')),
         lbl('MAX', numBox(() => d.max, (v) => { d.max = v == null ? 0 : v; }, 'Most', 0, 9999, '1')),
-        h('button', { class: 'btn small', type: 'button', text: 'REMOVE', 'aria-label': 'Remove drop ' + (k + 1), onclick: () => { m.drops.splice(k, 1); touch(); rebuild('drops'); } }));
+        h('button', { class: 'btn small', type: 'button', text: 'REMOVE', 'aria-label': 'Remove drop ' + (k + 1), onclick: () => { m.drops.splice(k, 1); touch(); rebuild('drops'); } }),
+        dropCarry(d, k));
     });
     return [
       sec('Drops'),
-      h('p', { class: 'hint', text: 'Instead of an inventory: each copy rolls every line on its own. Chance % is how likely it carries that item; then it gets a random amount from Min to Max.' }),
+      h('p', { class: 'hint', text: 'Instead of an inventory: each copy rolls every line on its own. Chance % is how likely it gets that item; then it gets a random amount from Min to Max. Carried: the mob has it and can use it (equipped where you say). Not carried: loot only, listed on its ITEMS tab but never used or equipped.' }),
       items.length ? null : h('p', { class: 'note', text: "Add items on the compendium's ITEMS tab first; drops are picked from those." }),
       h('div', { id: 'dropList' }, rows),
       items.length ? h('button', { class: 'btn small', type: 'button', id: 'addDrop', text: 'ADD DROP', onclick: () => {
         if (m.drops.length >= 50) return;
-        m.drops.push({ e: items[0].cid, chance: 100, min: 1, max: 1 }); touch(); rebuild('drops');
+        m.drops.push({ e: items[0].cid, chance: 100, min: 1, max: 1, carry: true, equip: '' }); touch(); rebuild('drops');
       } }) : null
     ].filter(Boolean);
+  }
+
+  // A drop line's Carried box and, when carried, where it starts equipped
+  function dropCarry(d, k) {
+    const cb = h('input', { type: 'checkbox', checked: d.carry !== false, 'aria-label': 'Drop ' + (k + 1) + ' is carried' });
+    const eq = h('select', { 'aria-label': 'Drop ' + (k + 1) + ' equipped', disabled: d.carry === false }, DROP_EQUIP.map(([v, t]) => h('option', { value: v, text: t })));
+    eq.value = d.equip || '';
+    cb.addEventListener('change', () => { d.carry = cb.checked; if (!cb.checked) d.equip = ''; eq.disabled = !cb.checked; eq.value = d.equip || ''; touch(); });
+    eq.addEventListener('change', () => { d.equip = eq.value; touch(); });
+    return h('div', { class: 'drop-carry' }, h('label', { class: 'chk' }, cb, h('span', { text: 'Carried' })), eq);
   }
 
   /* ----- the compendium list (home > COMPENDIUM) ----- */
@@ -3830,11 +3844,19 @@
     if (cur.viewOnly) {   // someone else's character: look, don't touch (a QM may change the items)
       Object.entries(cur.panels).forEach(([id, p]) => { if (!(id === 'items' && cur.qmItems)) lockPanel(p); });
       setStatus(viewOnlyStatus());
-    }
+    } else if (mobLocked()) Object.values(cur.panels).forEach(lockMobPanel);
     showTab('info');
     refresh();
   }
 
+  // A compendium mob saved with SAVE: every tab is read only until EDIT
+  const mobLocked = () => !!(cur && cur.book && cur.book.mob && cur.book.mob.locked && !cur.viewOnly);
+  function lockMobPanel(p) { lockPanel(p); p.querySelectorAll('[data-lock]').forEach((e) => { e.disabled = false; }); }
+  function mobLockButton() {
+    const m = cur.book.mob;
+    return h('button', { class: 'btn small', type: 'button', id: 'mobLock', 'data-lock': m.locked ? 'locked' : 'open', text: m.locked ? 'EDIT MOB' : 'SAVE MOB',
+      onclick: () => { if (m.locked) delete m.locked; else m.locked = true; touch(); Object.keys(cur.panels).forEach(rebuild); } });
+  }
   function lockPanel(p) {
     p.querySelectorAll('input, select, textarea, button').forEach((e) => { e.disabled = true; });
     p.querySelectorAll('.chev').forEach((e) => { e.disabled = false; });   // reading an item's description is still allowed
@@ -3914,10 +3936,11 @@
           confirmButton('GIVE CONTROL', 'TAP AGAIN TO GIVE', () => run(() => backend.giveNpc(ch.id, who.value),
             name + ' now belongs to ' + who.options[who.selectedIndex].text + '.', back))));
       }
+      const mob = isMob(ch);
       parts.push(h('div', { class: 'hand-box', 'data-npc': 'unlink' },
-        h('p', { class: 'note', text: 'Taking it out of the campaign keeps it: it stays with its owner under NPCs on their characters page.' }),
-        confirmButton('REMOVE FROM CAMPAIGN', 'TAP AGAIN TO REMOVE', () => run(() => backend.unlinkNpc(ch.id),
-          name + ' is out of the campaign' + (mine ? ' and kept under your NPCs.' : '.'), mine ? 'characters' : back))));
+        h('p', { class: 'note', text: mob ? 'This is a mob: taking it out of the campaign deletes it for good.' : 'Taking it out of the campaign keeps it: it stays with its owner under NPCs on their characters page.' }),
+        confirmButton(mob ? 'REMOVE AND DELETE' : 'REMOVE FROM CAMPAIGN', mob ? 'TAP AGAIN TO DELETE' : 'TAP AGAIN TO REMOVE', () => run(() => backend.unlinkNpc(ch.id),
+          mob ? name + ' was removed and deleted.' : name + ' is out of the campaign' + (mine ? ' and kept under your NPCs.' : '.'), mine && !mob ? 'characters' : back))));
     } else if (mine) {
       const mine2 = state.campaigns.filter((x) => iAmQm(x));
       if (mine2.length) {
@@ -4009,6 +4032,7 @@
     };
     alive.addEventListener('input', () => syncSg(true));
     syncSg(false);
+    const mobSheet = isMob(cur.ch);   // mobs have no Explode, Totem or Legacy Tokens and no money
     return [
       sec('Campaign'),
       h('div', { class: 'stackf' }, campField, ...playerFields(), ...npcFields(), ...npcManageFields()),
@@ -4021,7 +4045,7 @@
         field('Age', txtIn('info.age', 'Age', 20)),
         field('Height', txtIn('info.height', 'Height', 20)),
         field('Weight', numIn('info.weight', 'Weight', '0')),
-        field('Money', txtIn('info.money', 'Money', 30))),
+        mobSheet ? null : field('Money', txtIn('info.money', 'Money', 30))),
       sec('Map token'),
       tokenImageField(),
       sec('Corporeal Status'),
@@ -4029,8 +4053,8 @@
         field('Incarnation', numIn('info.incarnation', 'Incarnation', '1')),
         field('Spiritual guidance', sg),
         h('label', { class: 'chk span2' }, alive, 'Alive')),
-      sec('Tokens'),
-      h('div', { class: 'grid3' },
+      mobSheet ? null : sec('Tokens'),
+      mobSheet ? null : h('div', { class: 'grid3' },
         field('Explode tokens', numIn('info.explodeTokens', 'Explode tokens')),
         field('Totem tokens', numIn('info.totemTokens', 'Totem tokens')),
         field('Legacy tokens', numIn('info.legacyTokens', 'Legacy tokens'))),
@@ -4050,7 +4074,7 @@
           go('characters');
           backend.deleteCharacter(id).catch(async (err) => { await loadChars(); $('listMsg').textContent = err.message; renderCharList(); });
         } }))
-    ];
+    ].filter(Boolean);
   }
 
   /* ----- STATS ----- */
@@ -4200,6 +4224,7 @@
     const o = {}; ATTACK_FIELDS.forEach(([k, , n]) => { o[k] = a && a[k] != null ? String(a[k]).slice(0, n) : ''; }); if (a && a.needsLoad === true) o.needsLoad = true;
     if (a && typeof a.cid === 'string' && a.cid.length <= 64) o.cid = a.cid;   // an attack kept in a compendium
     const rf = cleanRef(a && a.cref); if (rf) o.cref = rf;                       // a copy of one
+    if (a && a.locked === true) o.locked = true;                                 // SAVE / EDIT lock
     return o;
   };
   const cleanAttacks = (l) => (Array.isArray(l) ? l : []).filter((a) => a && typeof a === 'object').slice(0, 20).map(cleanAttack);
@@ -4257,7 +4282,20 @@
     return true;
   }
 
-  // One line per item (name, hand marker, qty, charges, remove). Tapping the line opens the buttons and description underneath.
+  // SAVE / EDIT: a locked entry's fields can't be changed until EDIT is tapped (stored as obj.locked). Parts marked data-keep stay usable.
+  function lockToggle(obj, tab) {
+    return h('button', { class: 'btn', type: 'button', 'data-lock': obj.locked ? 'locked' : 'open', 'data-keep': '1', text: obj.locked ? 'EDIT' : 'SAVE',
+      'aria-label': (obj.locked ? 'Edit ' : 'Save and lock ') + (String(obj.name || '').trim() || 'this entry'),
+      onclick: () => { if (obj.locked) delete obj.locked; else obj.locked = true; touch(); rebuild(tab); } });
+  }
+  function applyLock(card, obj) {
+    card.classList.toggle('locked', !!obj.locked);
+    if (!obj.locked) return;
+    card.querySelectorAll('input, select, textarea, button').forEach((e) => { if (!e.closest('[data-keep]') && !e.classList.contains('chev')) e.disabled = true; });
+  }
+  const keep = (el) => { if (el) el.dataset.keep = '1'; return el; };
+
+  // One line per item (name, hand marker, qty). Tapping the line opens charges, the buttons and the description underneath.
   function itemCard(i) {
     const it = cur.ch.items[i];
     const card = h('div', { class: 'item' });
@@ -4266,7 +4304,7 @@
     if (it.magic) {
       if (!it.magicProps || typeof it.magicProps !== 'object') it.magicProps = {};
       it.charges = clampCharges(it);
-      chargesIn = h('input', { type: 'number', class: 'num', step: '1', min: '0', max: String(maxOf(it)), placeholder: '0', 'aria-label': 'Charges (0 to Max Charges)' });
+      chargesIn = h('input', { type: 'number', class: 'num', step: '1', min: '0', max: String(maxOf(it)), placeholder: '0', 'aria-label': 'Charges (0 to Max Charges)', 'data-keep': '1' });
       chargesIn.value = it.charges == null ? '' : it.charges;
       chargesIn.addEventListener('input', () => {
         if (chargesIn.value === '') { it.charges = null; touch(); return; }
@@ -4277,7 +4315,7 @@
     }
     const chev = h('button', { class: 'chev', type: 'button', 'aria-label': 'Show or hide the description' });
     const name = nameIn('items.' + i + '.name', 'Item name', 60);
-    const qtyIn = numIn('items.' + i + '.qty', 'Quantity', '1');
+    const qtyIn = keep(numIn('items.' + i + '.qty', 'Quantity', '1'));
     const held = HANDS.filter(([k]) => it[k]).map((x) => x[3]).join('') + (it.eqB ? 'B' : '');
     card.classList.toggle('held', !!held);
 
@@ -4292,27 +4330,33 @@
         } });
       return b;
     };
-    const give = giveForm(i);
+    const give = giveForm(i); keep(give.el);
     const bf = buffCard(i);
     const wp = it.weapon ? weaponCard(i) : null;
     const mg = it.magic ? magicCard(i, () => chargesIn) : null;
+    const remove = h('button', { class: 'btn', type: 'button', text: 'REMOVE', 'aria-label': 'Remove ' + (String(it.name || '').trim() || 'this item'), onclick: () => {
+      cur.ch.items.splice(i, 1); cur.itemOpen.delete(it); cur.buffOpen.delete(it); touch(); rebuild('items');
+    } });
     const acts = h('div', { class: 'iact' },
-      h('button', { class: 'btn', type: 'button', text: '-1', 'aria-label': 'Remove one', onclick: () => setQty(effQty(it) - 1) }),
-      h('button', { class: 'btn', type: 'button', text: '+1', 'aria-label': 'Add one', onclick: () => setQty(effQty(it) + 1) }),
-      cur.book ? null : HANDS.map(handBtn),
-      it.wearable && !cur.book ? h('button', { class: 'btn', type: 'button', text: 'BODY', 'aria-pressed': String(!!it.eqB), onclick: () => {
+      chargesIn ? h('label', { class: 'chg', 'data-keep': '1' }, h('small', { text: 'CHARGES' }), chargesIn) : null,
+      keep(h('button', { class: 'btn', type: 'button', text: '-1', 'aria-label': 'Remove one', onclick: () => setQty(effQty(it) - 1) })),
+      keep(h('button', { class: 'btn', type: 'button', text: '+1', 'aria-label': 'Add one', onclick: () => setQty(effQty(it) + 1) })),
+      cur.book || it.loot ? null : HANDS.map((x) => keep(handBtn(x))),
+      it.wearable && !cur.book && !it.loot ? keep(h('button', { class: 'btn', type: 'button', text: 'BODY', 'aria-pressed': String(!!it.eqB), onclick: () => {
         it.eqB = !it.eqB; if (it.eqB) { it.eqL = false; it.eqR = false; }   // any number of things on the body, but not also in a hand
         touch(); rebuild('items');
-      } }) : null,
-      h('button', { class: 'btn', type: 'button', text: 'ITEM BUFFS' + (cleanBuffs(it.buffs).length ? ' (' + cleanBuffs(it.buffs).length + ')' : ''), 'aria-expanded': String(cur.buffOpen.has(it)), onclick: (e) => {
+      } })) : null,
+      keep(h('button', { class: 'btn', type: 'button', text: 'ITEM BUFFS' + (cleanBuffs(it.buffs).length ? ' (' + cleanBuffs(it.buffs).length + ')' : ''), 'aria-expanded': String(cur.buffOpen.has(it)), onclick: (e) => {
         bf.hidden = !bf.hidden; if (bf.hidden) cur.buffOpen.delete(it); else cur.buffOpen.add(it);
         e.currentTarget.setAttribute('aria-expanded', String(!bf.hidden));
-      } }),
-      cur.viewOnly || cur.book ? null : h('button', { class: 'btn', type: 'button', text: 'GIVE', 'aria-expanded': 'false', onclick: (e) => {
+      } })),
+      cur.viewOnly || cur.book ? null : keep(h('button', { class: 'btn', type: 'button', text: 'GIVE', 'aria-expanded': 'false', onclick: (e) => {
         give.el.hidden = !give.el.hidden; e.currentTarget.setAttribute('aria-expanded', String(!give.el.hidden));
         if (!give.el.hidden) give.load();
-      } }),
-      updateBtn('items', it, 'items'));
+      } })),
+      keep(updateBtn('items', it, 'items')),
+      cur.viewOnly && !cur.qmItems ? null : lockToggle(it, 'items'),
+      remove);
     const flags = h('div', { class: 'iflags' }, FLAGS.map(([k, label]) => {
       const cb = h('input', { type: 'checkbox', checked: !!it[k], 'aria-label': label });
       cb.addEventListener('change', () => { it[k] = cb.checked; if (k === 'wearable' && !cb.checked) it.eqB = false; if (k === 'weapon') fixWeapon(it); touch(); rebuild('items'); });
@@ -4325,17 +4369,15 @@
       chev.textContent = open ? 'v' : '>'; chev.setAttribute('aria-expanded', String(open));
     };
     const line = h('div', { class: 'iline' }, chev, name,
-      h('span', { class: 'htag', text: held, title: HANDS.filter(([k]) => it[k]).map((x) => x[1]).join(' and ') }),
-      qtyIn,
-      chargesIn || h('span'),
-      h('button', { class: 'btn small', type: 'button', text: 'REMOVE', onclick: () => {
-        cur.ch.items.splice(i, 1); cur.itemOpen.delete(it); touch(); rebuild('items');
-      } }));
+      h('span', { class: 'htag', text: it.loot ? 'LOOT' : held, title: it.loot ? 'Loot: not carried, so never used or equipped' : HANDS.filter(([k]) => it[k]).map((x) => x[1]).join(' and ') }),
+      qtyIn);
+    if (it.loot) card.classList.add('loot');
     chev.addEventListener('click', () => setOpen(!cur.itemOpen.has(it)));
     line.addEventListener('click', (e) => { if (e.target === line) setOpen(!cur.itemOpen.has(it)); });   // the empty part of the line
     name.addEventListener('click', () => { if (!cur.itemOpen.has(it)) setOpen(true); });                    // tapping the name to edit it also shows the description
     card.append(line, desc);
     setOpen(cur.itemOpen.has(it));
+    applyLock(card, it);
     return card;
   }
 
@@ -4381,13 +4423,15 @@
   function attackList(path, list, tab, isWeapon, defName) {
     const card = (a, j) => {
       const p = path + '.' + j + '.';
-      return h('div', { class: 'atk' },
-        h('div', { class: 'iline atkl' }, nameIn(p + 'name', 'Attack name', 60), txtIn(p + 'cost', 'Attack cost, for example 2 AP', 20),
+      const el = h('div', { class: 'atk' },
+        h('div', { class: 'iline atkl' }, field('Name', nameIn(p + 'name', 'Attack name', 60)), field('Cost', txtIn(p + 'cost', 'Attack cost, for example 2 AP', 20)),
           h('button', { class: 'btn small', type: 'button', text: 'REMOVE', 'aria-label': 'Remove attack ' + (a.name || ''), onclick: () => { list.splice(j, 1); touch(); rebuild(tab); } })),
         h('div', { class: 'wpgrid' }, field('Attack Dmg', txtIn(p + 'dmg', 'Attack Dmg', 100)), field('Range', txtIn(p + 'range', 'Attack range', 60)), field('Dmg Type', txtIn(p + 'damage', 'Attack damage type', 60)),
           isWeapon ? h('label', { class: 'chk' }, bind(h('input', { type: 'checkbox', 'aria-label': 'Needs the weapon loaded' }), p + 'needsLoad', 'check'), h('span', { text: 'Needs loading' })) : null,
           h('div', { class: 'wp-wide' }, field('Effect', area(p + 'effect', 'Attack effect')))),
-        isWeapon ? null : updateRow('attacks', a, tab));
+        isWeapon || cur.viewOnly ? (isWeapon ? null : updateRow('attacks', a, tab)) : h('div', { class: 'iact' }, keep(updateBtn('attacks', a, tab)), lockToggle(a, tab)));
+      if (!isWeapon) applyLock(el, a);   // a weapon's attacks lock with the weapon
+      return el;
     };
     return h('div', { class: 'attacks' }, list.map(card),
       h('button', { class: 'btn small', type: 'button', text: 'ADD ATTACK', 'data-add-attack': isWeapon ? 'weapon' : 'character', onclick: () => {
@@ -4498,7 +4542,7 @@
       note ? h('p', { class: 'msg', role: 'status', text: note }) : null,
       bk ? null : h('p', { class: 'note hands', id: 'handsLine', text: 'Left hand: ' + inHand(HANDS[0]) + '  ·  Right hand: ' + inHand(HANDS[1]) + '  ·  Body: ' + (cur.ch.items.filter((t) => t.eqB).map(itemLabel).join(', ') || 'nothing') }),
       bk ? null : (() => { const l = BSH.itemBuffs(cur.ch).list; return l.length ? h('p', { class: 'note hands', id: 'itemBuffLine', text: 'Item buffs: ' + l.map((b) => buffName(b) + ' ' + signedAmt(b.amt)).join(', ') }) : null; })(),
-      cur.ch.items.length ? h('div', { class: 'iline ihead' }, h('span'), h('span', { text: 'Item' }), h('span'), h('span', { text: 'Qty' }), h('span', { text: 'Charges' }), h('span')) : null,
+      cur.ch.items.length ? h('div', { class: 'iline ihead' }, h('span'), h('span', { text: 'Item' }), h('span'), h('span', { text: 'Qty' })) : null,
       list,
       h('button', { class: 'btn small', type: 'button', text: 'ADD ITEM', onclick: () => {
         cur.ch.items.push({ name: '', qty: null, charges: null, desc: '', wearable: false, weapon: false, magic: false, buffs: [], weaponProps: {}, magicProps: {} }); touch(); rebuild('items');
@@ -4512,7 +4556,8 @@
     const ab = cur.ch.abilities[i];
     const card = h('div', { class: 'item' });
     const chev = h('button', { class: 'chev', type: 'button', 'aria-label': 'Show or hide the description' });
-    const desc = h('div', { class: 'idesc' }, field('Description', growArea('abilities.' + i + '.desc', 'Ability description')), updateRow('abilities', ab, 'abilities'));
+    const desc = h('div', { class: 'idesc' }, field('Description', growArea('abilities.' + i + '.desc', 'Ability description')),
+      cur.viewOnly ? updateRow('abilities', ab, 'abilities') : h('div', { class: 'iact' }, keep(updateBtn('abilities', ab, 'abilities')), lockToggle(ab, 'abilities')));
     const name = nameIn('abilities.' + i + '.name', 'Ability name', 60);
     const setOpen = (open) => {
       if (open) cur.itemOpen.add(ab); else cur.itemOpen.delete(ab);
@@ -4528,6 +4573,7 @@
     name.addEventListener('click', () => { if (!cur.itemOpen.has(ab)) setOpen(true); });
     card.append(line, desc);
     setOpen(cur.itemOpen.has(ab));
+    applyLock(card, ab);
     return card;
   }
   // the picture used for this character's token on encounter maps (otherwise a coloured circle with the initiative number)
@@ -4550,10 +4596,14 @@
   }
   // A custom action: shows in the Actions menu. A cost like "2 AP" or "1 SP" adds a button that spends it.
   function customActionCard(i) {
-    return h('div', { class: 'item custom-action' },
+    const ca = cur.ch.customActions[i];
+    const card = h('div', { class: 'item custom-action' },
       h('div', { class: 'iline abl' }, nameIn('customActions.' + i + '.name', 'Custom action name', 60), txtIn('customActions.' + i + '.cost', 'Custom action cost, for example 2 AP', 20),
         h('button', { class: 'btn small', type: 'button', text: 'REMOVE', onclick: () => { cur.ch.customActions.splice(i, 1); touch(); rebuild('abilities'); } })),
-      h('div', { class: 'idesc' }, field('Description', growArea('customActions.' + i + '.desc', 'Custom action description')), updateRow('customActions', cur.ch.customActions[i], 'abilities')));
+      h('div', { class: 'idesc' }, field('Description', growArea('customActions.' + i + '.desc', 'Custom action description')),
+        cur.viewOnly ? updateRow('customActions', ca, 'abilities') : h('div', { class: 'iact' }, keep(updateBtn('customActions', ca, 'abilities')), lockToggle(ca, 'abilities'))));
+    applyLock(card, ca);
+    return card;
   }
   function panelAbilities() {
     if (!Array.isArray(cur.ch.customActions)) cur.ch.customActions = [];
@@ -4593,6 +4643,7 @@
     if (!cur.panels[id]) return;
     cur.panels[id].replaceChildren(...panelFn(id)());
     if (cur.viewOnly && !(id === 'items' && cur.qmItems)) lockPanel(cur.panels[id]);
+    else if (mobLocked()) lockMobPanel(cur.panels[id]);
     window.scrollTo(0, y);
   }
 

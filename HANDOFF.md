@@ -1,39 +1,39 @@
 # Handoff
-Last updated 2026-11-22 20:50 (backlog batched into releases; no code work started). Overwrite each time; keep under 40 lines. Change record: HISTORY.md (don't read unless asked).
+Last updated 2026-11-23 12:06 (Release 4 built on `next`, not published). Overwrite each time; keep under 40 lines. Change record: HISTORY.md (don't read unless asked).
 
 ## Goal
 BLOODSOUP HELL Companion: one PWA for Ricky's homemade tabletop RPG, with Supabase accounts, campaigns, encounters and NPCs.
 
 ## Done
-- Version 3 published 2026-11-22 (cache `bloodsoup-v59`). Ricky must re-run `supabase/campaigns.sql` (compendiums, `give_item` cref). Contents:
-  - Attack lists, the Load action, QM item editing (see README "Attacks, loading, and QM item changes").
-  - **Compendiums** (README "Compendiums"): home > COMPENDIUM; items, mobs (± ranges on talents/proficiencies, stat variation %, DROPS with chance and min-max), abilities, attacks, custom actions; export/import; FROM COMPENDIUM on sheets; UPDATE FROM COMPENDIUM on copies; campaign compendium (QM: ADD MOBS "Goblin 1, 2...", GIVE ITEM; co-QMs read only; players never see it).
-  - RULES / GUIDE / NOTES together at the top of every screen (second row on phones).
-  - Sheet export now includes the character's own attacks (were missing).
-  - Tests: new `tests/compendium.js` (106), new SQL cases, `chars.js` / `rulesui.js` updated. Guide, README, ARCHITECTURE updated; `guide.js` rebuilt.
+- Version 3 published 2026-11-22 (cache `bloodsoup-v59`).
+- Release 4 on `next` (README "Mobs and sheet cleanup (version 4)"); DB change, so `campaigns.sql` must be re-run when it ships:
+  - MAKE MOBS opens the campaign compendium's ADD MOBS; old copy-an-NPC maker removed. Mobs are off My Characters and deleted when removed from the campaign or when it is deleted (`is_mob_npc`).
+  - Compendium mob: Talent/Proficiency level floor and ceiling, random sex/age/height/weight, drops Carried (equip R/L/both/worn) or loot. Mob stats round to whole numbers. No ET/Totem/Legacy/money on mobs.
+  - SAVE / EDIT lock on items, abilities, attacks, custom actions, compendium mobs (SAVE MOB). Item row: Qty at the right; Charges and REMOVE inside the item. Attack Name/Cost labelled.
+  - Tests: new `tests/release4.js` (68), 5 new SQL cases; batch4/chars/magic/gifts updated. Full suite and slow tests pass. USER_GUIDE, README, ARCHITECTURE updated; guide.js rebuilt.
 
 ## In progress
-- Nothing mid-flight.
+- Nothing mid-flight. Not yet looked at in a real browser (see BACKLOG Watch).
 
 ## Decisions
-- Ricky (2026-11-22, backlog review): mob variation lives on the compendium mob and applies automatically at spawn (no roll, no dialog setting); removing a spawned mob deletes it permanently; Undo reverses up to two actions, not after END TURN. Release plan is at the top of BACKLOG.md.
-- Ricky (2026-11-22): copies keep a link + UPDATE button (no live link); all QMs of a campaign use its compendium, only the owner edits; compendium also holds abilities, attacks, custom actions; GUIDE and NOTES everywhere beside RULES.
-- Assumptions Ricky has not reviewed:
-  - Ranges are whole numbers 0-100, rolled evenly; rolled values never go below 0; a blank talent counts as 10.
-  - Drops come only from the compendium's own items; each line rolls on its own; two lines for one item stack.
-  - Mob copies are always numbered (even one), continuing from the highest number in the campaign, and start hidden.
-  - UPDATE on an item keeps qty, charges, hands, loaded; on a mob NPC keeps name, vitals, tokens, items, money, alive, incarnation.
-  - Players can use their own compendiums on their own sheets. QMs still can't add abilities to players' sheets (items only, as before).
-  - Any QM may switch the campaign to their own compendium or none. Limits: 5 MB, 500 items, 200 mobs, 300 of each other kind.
-  - An imported compendium is new: copies made from the original don't link to it.
-- Earlier unreviewed assumptions (loading, combos, tokens, codex, mobs) are unchanged; see the version 2 notes in README and the previous handoff in HISTORY.
+- Ricky (2026-11-23): approved the Release 4 plan, including random looks (sex list + age/height/weight ranges) and carried/equipped drops.
+- Ricky (2026-11-22): mob variation applies at spawn with no dialog setting; removal deletes a mob; Undo up to two actions, not after END TURN.
+- Assumptions Ricky has not reviewed (Release 4):
+  - Floor/ceiling is on the totals (Talent level, Proficiency level), as the backlog worded it, not per talent. Entries are nudged within their own ranges; if they can't reach the limit, it stops short.
+  - Height range is in inches and written 5'10"; weight is a plain number. UPDATE on a mob keeps its rolled looks.
+  - Mob stat rounding happens in `BSH.compute` for any `info.kind` mob/boss (ordinary sheets unchanged).
+  - Loot = an item with `loot: true` on the mob (LOOT tag, no hands, no buffs). Old drops count as carried, not equipped.
+  - Locked entries still allow qty, charges, hands/body, GIVE and UPDATE; REMOVE is blocked. Weapon attacks lock with their weapon.
+  - A QM leaving still hands their mobs to another QM (they are not deleted).
+- Earlier unreviewed assumptions (compendiums, loading, combos, tokens, codex) unchanged; see README and HISTORY.
 
 ## Next steps
-1. Confirm Ricky re-ran `campaigns.sql`; ask him to try compendiums (making a mob, ADD MOBS, GIVE ITEM, UPDATE) and the top bar on his phone; review the assumptions above.
-2. When Ricky says go: Release 4 on `next` (see BACKLOG.md release plan), then 5, then rules automation. Wait for his go-ahead; no whiteboard.
+1. Ricky reviews Release 4 (try it on his phone; review assumptions). When he says publish: merge `main` into `next`, bump to version 4 / `bloodsoup-v60`, push `next` to `main`, tell him to re-run `campaigns.sql`.
+2. Then Release 5 (see BACKLOG.md release plan) on his go-ahead.
 
 ## Gotchas
 - Tests that use weapon attacks must put the weapon in a hand (`eqR: true`).
-- UPDATE buttons on items/abilities are inside the folded details; tests find them with `[data-update]`.
+- UPDATE buttons on items/abilities are inside the folded details; tests find them with `[data-update]`. Item charges: `[aria-label="Charges (0 to Max Charges)"]`; REMOVE is in the item's `.iact` row.
 - After editing `USER_GUIDE.md`, rebuild `guide.js` (`python3 tools/build_guide.py`). Write `&lt;x&gt;` for angle-bracket placeholders.
-- SQL test counts vary a little between runs (random paths); compare FAIL lines, not totals.
+- SQL test counts vary a little between runs (random paths); compare FAIL lines, not totals. Late SQL blocks must use `kim`/`sam` (ricky's account is gone by then).
+- jsdom has no `scrollIntoView`; guard it.
