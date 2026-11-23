@@ -503,6 +503,14 @@
   }, 15000);
 
   // Button that needs a second tap to confirm (no pop-up dialogs)
+  // A roll's result: the outcome big and bright in a highlighted box (it appears after half a second), the calculation in larger text under it
+  const ROLL_WORDS = /CRITICAL HIT|CRITICAL MISS|BLOCKED|PARRIED|HIT|MISS/;
+  function showRoll(el, head, calc) {
+    if (!el) return;
+    const big = String(head || (ROLL_WORDS.exec(calc || '') || [''])[0] || '').trim();
+    if (!big) { el.textContent = calc; return; }
+    el.replaceChildren(h('span', { class: 'roll-big', text: big }), h('span', { class: 'calc', text: calc }));
+  }
   function confirmButton(label, armedLabel, action, cls = 'btn small') {
     const b = h('button', { class: cls, type: 'button', text: label });
     let timer = null;
@@ -585,6 +593,7 @@
       return row;
     }));
 
+    $('campCols').classList.toggle('qm', qm); $('screen-campaign').classList.toggle('qm-wide', qm); $('qmColHead').hidden = !qm;
     renderEncounterBox(g, me, qm);
     renderSpawnBanner(g, me);
     renderAttackWait();
@@ -741,7 +750,7 @@
           h('button', { class: 'btn char-btn', type: 'button', disabled: locked, 'aria-disabled': String(locked), onclick: () => { if (!locked) go('character-' + c.id); } },
             h('span', { text: c.info.name || 'Unnamed character' }),
             h('span', { class: 'sub', text: sub.join(' · ') })),
-          locked ? null : vitalsRow(r, res, kept)),
+          locked ? null : vitalsRow(r, res, kept, qm)),
         i ? h('span', { class: 'tag init', title: initText(i), text: 'INIT ' + fmt(i.total) }) : null,
         enc && !i && !c.isNpc ? h('span', { class: 'tag', text: 'WAITING' }) : null,
         c.isNpc ? h('span', { class: 'tag', text: c.npcVisible ? 'NPC · SHOWN' : 'NPC · HIDDEN' }) : null,
@@ -756,7 +765,8 @@
           h('button', { class: 'btn small', type: 'button', text: c.sheetHidden ? 'SHOW SHEET' : 'HIDE SHEET',
             onclick: () => campaignAction(() => backend.setNpcSheetHidden(c.id, !c.sheetHidden)) }));
       }
-      if (myTurn && r.mine && !c.isNpc) row.append(h('button', { class: 'btn small', type: 'button', text: 'END TURN',
+      if (!locked && enc && ((r.mine && !c.isNpc) || qm)) { const ub = undoButton(g, c); if (ub) { ub.dataset.undo = c.id; row.append(ub); } }
+      if (myTurn && ((r.mine && !c.isNpc) || (qm && c.isNpc))) row.append(h('button', { class: 'btn small', type: 'button', text: 'END TURN', 'data-endturn': c.id,
         onclick: () => campaignAction(() => backend.advanceTurn(g.id, c.id)).then(() => pollCampaigns(true)) }));
       if (!locked && (qm || (r.mine && !c.isNpc))) row.append(h('button', { class: 'btn small', type: 'button', text: c.vitals && c.vitals.bleeding ? 'STOP BLEEDING' : 'BLEEDING',
         onclick: () => campaignAction(() => setTokens(c, 'bleeding', c.vitals && c.vitals.bleeding ? 0 : 1)) }));
@@ -836,8 +846,16 @@
     const f = v[key.toLowerCase() + 'Remaining'];
     return f == null || f === '' ? res.stat[VITALS.find((x) => x[0] === key)[1]] : Number(f);
   }
-  function vitalsRow(r, res, kept) {
-    const c = r.ch, mine = r.mine && !!findChar(c.id);
+  // Roster values that changed: the old number stays for half a second, then the new one comes in highlighted
+  const vitShown = new Map();
+  const FX_DELAY = /jsdom/i.test((typeof navigator !== 'undefined' && navigator.userAgent) || '') ? 0 : 500;
+  function fxChange(el, apply) {
+    const go = () => { apply(); el.classList.remove('vit-changed'); void el.offsetWidth; el.classList.add('vit-changed'); };
+    if (!FX_DELAY) { go(); return; }
+    el.classList.add('vit-pending'); setTimeout(() => { el.classList.remove('vit-pending'); go(); }, FX_DELAY);
+  }
+  function vitalsRow(r, res, kept, qm) {
+    const c = r.ch, mine = (r.mine && !!findChar(c.id)) || !!qm;   // a QM can change anyone's current values
     const dh = !mine ? null : (() => {
       const id = c.id + ':DH';
       const input = h('input', { type: 'number', step: 'any', class: 'num', 'data-vit': id, placeholder: '+/-', 'aria-label': 'Damage or healing for ' + (c.info.name || 'this character') });
@@ -847,19 +865,28 @@
       return h('span', { class: 'vit' }, h('b', { text: 'DMG/HEAL' }), input, h('button', { class: 'btn small', type: 'button', text: 'ACCEPT', onclick: go }));
     })();
     return h('div', { class: 'vitals' }, VITALS.map(([key, si]) => {
-      const total = res.stat[si], now = vitalNow(c, res, key);
-      if (!mine) return h('span', { class: 'vit' }, h('b', { text: key }), ' ' + fmt(now), h('span', { class: 'of', text: '/' + fmt(total) }));
-      const id = c.id + ':' + key;
+      const total = res.stat[si], now = vitalNow(c, res, key), id = c.id + ':' + key, prev = vitShown.get(id);
+      vitShown.set(id, now);
+      const changed = prev != null && prev !== now;
+      if (!mine) {
+        const num = h('span', { class: 'vnum', text: fmt(changed ? prev : now) });
+        const el = h('span', { class: 'vit' }, h('b', { text: key }), ' ', num, h('span', { class: 'of', text: '/' + fmt(total) }));
+        if (changed) fxChange(el, () => { num.textContent = fmt(now); });
+        return el;
+      }
       const input = h('input', { type: 'number', step: 'any', class: 'num', 'data-vit': id, 'aria-label': key + ' now for ' + (c.info.name || 'this character'), placeholder: fmt(total) });
       input.value = fmt(now); input.defaultValue = input.value;
       if (kept[id] != null) input.value = kept[id];
       input.addEventListener('change', () => saveVital(r, key, input.value === '' ? null : Number(input.value), input));
-      return h('span', { class: 'vit' }, h('b', { text: key }), input, h('span', { class: 'of', text: '/' + fmt(total) }));
+      const el = h('span', { class: 'vit' }, h('b', { text: key }), input, h('span', { class: 'of', text: '/' + fmt(total) }));
+      if (changed && kept[id] == null) { input.value = fmt(prev); fxChange(el, () => { if (document.activeElement !== input) input.value = fmt(now); }); }
+      return el;
     }), dh);
   }
   async function saveVital(r, key, value, input, delta) {
     const mine = findChar(r.ch.id);
-    if (!mine || (value != null && Number.isNaN(value))) return;
+    if (value != null && Number.isNaN(value)) return;
+    if (!mine) { await qmSaveVital(r, key, value, input, delta); return; }
     const apply = (ch) => {
       ch.vitals = ch.vitals || {};
       if (key === 'HP' && delta != null) changeHp(ch, delta);
@@ -876,6 +903,25 @@
     if (delta != null && typeof renderCampaignPage === 'function') { try { renderCampaignPage(); } catch (e) { /* page not open */ } }
   }
 
+
+  // A QM changing another player's current values (the server checks they are QM): HP is sent as damage taken
+  async function qmSaveVital(r, key, value, input, delta) {
+    const c = r.ch, g = state.campaigns.find((x) => x.id === c.campaignId);
+    if (!g || !iAmQm(g)) return;
+    const tmp = { vitals: Object.assign({}, c.vitals) }, patch = {};
+    if (key === 'HP') {
+      const t = Object.assign({}, c, tmp);
+      if (delta != null) changeHp(t, delta); else if (value == null) t.vitals.damage = null; else setHp(t, value);
+      patch.damage = t.vitals.damage == null ? null : t.vitals.damage;
+    } else patch[key.toLowerCase() + 'Remaining'] = value;
+    try {
+      await backend.qmSetVitals(g.id, c.id, patch);
+      c.vitals = Object.assign({}, c.vitals, patch);
+      setCampaignMsgs('');
+    } catch (e) { setCampaignMsgs('Could not change ' + key + ': ' + e.message); }
+    if (input) input.defaultValue = input.value;
+    try { renderCampaignPage(); } catch (e) { /* page not open */ }
+  }
 
   /* ===== Explode Tokens (ET) =====
      A character holds 0-10 ET (INFO tab). Before a roll the player declares how many to spend (the ET stepper next to the roll
@@ -1023,7 +1069,7 @@
         let tokTxt = '';
         if (pending.dmg > 0 && tr && !/psychic/i.test(pending.line || '')) { try { const r0 = BSH.compute(tr.ch); tokTxt = (await applyHitTokens(Object.assign({}, tr.ch, { vitals: Object.assign({}, tr.ch.vitals, { bleeding: 0 }) }), pending.dmg, r0.stat[0])).text; } catch (e) { tokTxt = ''; } }
         if (tr && pending.dmg > 0) { tr.ch.vitals = tr.ch.vitals || {}; tr.ch.vitals.damage = r2((Number(tr.ch.vitals.damage) || 0) + pending.dmg); }
-        out.textContent = pending.line + (pending.dmg > 0 ? ' Applied. ' : ' Nothing to apply. ') + pending.hp + tokTxt;
+        showRoll(out, pending.dmg > 0 ? 'APPLIED ' + fmt(pending.dmg) : 'NO DAMAGE', pending.line + (pending.dmg > 0 ? ' Applied. ' : ' Nothing to apply. ') + pending.hp + tokTxt);
         pending = null;
         try { renderCampaignPage(); } catch (e) { /* page not open */ }
       } catch (e) { out.textContent = e.message; apply.disabled = false; }
@@ -1045,7 +1091,7 @@
         + (crit.checked ? ', doubled = ' + fmt(dmg) : '') + ' damage.';
       const hp = nm(tr) + ' HP ' + fmt(before) + ' to ' + fmt(before - dmg) + '.';
       pending = { id: tr.ch.id, dmg, line, hp };
-      out.textContent = line + ' ' + hp + ' Tap APPLY to deal it.'; apply.disabled = false;
+      showRoll(out, 'DAMAGE ' + fmt(dmg), line + ' ' + hp + ' Tap APPLY to deal it.'); apply.disabled = false;
     } });
     $('etTitle').textContent = 'Roll Damage';
     $('etBody').replaceChildren(
@@ -1080,7 +1126,7 @@
     if (!r || skillChar !== ch) return;
     const g = r.groups[0], adj = g.natural === 1 ? -5 : g.natural === 20 ? 5 : 0, total = m + adj + g.total;
     $('skillMsg').textContent = '';
-    $('skillOut').textContent = BSH.SKILLS[i].name + (advNote ? ' (' + advNote + ')' : '') + ': ' + g.text + (m < 0 ? ' - ' : ' + ') + fmt(Math.abs(m)) + (adj ? (adj < 0 ? ' - 5' : ' + 5') : '') + ' = ' + fmt(total);
+    showRoll($('skillOut'), 'TOTAL ' + fmt(total), BSH.SKILLS[i].name + (advNote ? ' (' + advNote + ')' : '') + ': ' + g.text + (m < 0 ? ' - ' : ' + ') + fmt(Math.abs(m)) + (adj ? (adj < 0 ? ' - 5' : ' + 5') : '') + ' = ' + fmt(total));
   }
   function openSkillCheck(c) {
     skillChar = c;
@@ -1216,7 +1262,7 @@
       const go = h('button', { class: 'btn', type: 'button', text: 'APPLY REST' }), msg = h('span', { class: 'dline', role: 'status' });
       go.addEventListener('click', async () => {
         go.disabled = true;
-        await applyRest(ch, (c) => { setHp(c, totHp); c.vitals.epRemaining = null; c.vitals.bt = 0; c.vitals.wt = Math.max(0, tokenOf(c, 'wt') - 1); delete c.vitals.restCd; });
+        await applyRest(ch, (c) => { setHp(c, totHp); c.vitals.epRemaining = null; c.vitals.bt = 0; c.vitals.wt = Math.max(0, tokenOf(c, 'wt') - 1); delete c.vitals.restCd; }, t.name);
         msg.textContent = 'Done. HP and EP are full' + (btWas ? ', Bleed Tokens are cleared' : '') + (wtWas ? ' and 1 Wound Token is removed' : '') + '.';
       });
       const btWas = tokenOf(ch, 'bt'), wtWas = tokenOf(ch, 'wt');
@@ -1266,15 +1312,16 @@
         setHp(c, g.hpTo); c.vitals.epRemaining = g.epTo; c.vitals.bt = g.btTo;
         restCdTick(c, epDone);   // EP recovered here counts toward other rests' cooldowns
         if (t.cd) { c.vitals.restCd = Object.assign({}, c.vitals.restCd, { [t.name]: t.cd }); }   // this rest cannot be used again until 2 / 6 EP are recovered
-      });
+      }, t.name);
       sum.textContent += '   Done.';
     });
     showActionCard(t.name, nodes, back);
   }
   // Writes a rest's result to the character (the roster row's copy and your own sheet copy)
-  async function applyRest(rowCh, change) {
+  async function applyRest(rowCh, change, label) {
     const mine = findChar(rowCh.id);
     if (!mine) return;
+    await undoMark(mine, label || 'Rest', []);
     [mine, rowCh].forEach((c) => { c.vitals = c.vitals || {}; change(c); mine.updated = Date.now(); });
     if (hasAb(mine, /explosive personality/i) && mine.info.alive !== false && etHeld(mine) < 10) {   // Explosive Personality: +1 ET each rest
       const plusOne = etHeld(mine) + 1;
@@ -1326,7 +1373,7 @@
     if (!atkWatch) return;
     const w = atkWatch, g = state.campaigns.find((x) => x.id === w.campaignId), e = g && g.encounter;
     const done = (txt) => {
-      w.out.textContent = txt;
+      showRoll(w.out, null, txt);
       [w.rollBtn, w.goBtn, w.die, w.sel].forEach((x) => { x.hidden = false; }); w.die.value = '';
       atkWatch = null; try { renderCampaignPage(); } catch (er) { /* page not open */ }
     };
@@ -1544,9 +1591,10 @@
         const pw = pp ? powerFrom(pp, st, rr.groups.slice(1).map((x) => x.total)) : null;
         const combo = comboBox.checked && myCombos[0] ? myCombos[0] : null;
         if (combo && tr.ch.id === combo.leader) { out.textContent = 'Pick a target other than the Leader.'; return; }
+        await undoMark(mc, a.name + ' on ' + tn, [tr.ch.id].concat(combo ? [combo.leader] : []));
         if ((canDef || combo) && pw) {
           // the target can block or parry (or this is a Combo Attack): their device answers, then the result comes back here
-          if (m) await performAction({ name: a.name, cost: a.cost });
+          if (m) await performAction({ name: a.name, cost: a.cost }, true);
           if (a.weaponUid) await fireWeapon(mc, a.weaponUid);
           const id = await backend.startAttack(mc.id, tr.ch.id, total, pw.total, mine, combo ? combo.leader : null);
           out.textContent = mine + '. ' + (combo ? 'Waiting for the Leader to roll their attack, then ' + tn + ' answers...' : 'Waiting for ' + tn + ' to block, parry or take it (the QM can skip the block)...');
@@ -1554,17 +1602,17 @@
           atkWatch = { campaignId: mc.campaignId, attackId: id, out, rollBtn, goBtn, die, sel };
           return;
         }
-        if (m) await performAction({ name: a.name, cost: a.cost });
+        if (m) await performAction({ name: a.name, cost: a.cost }, true);
         if (a.weaponUid) await fireWeapon(mc, a.weaponUid);
         const kind = BSH.COMBAT.classify(total, da);
-        if (kind === 'critfail') { out.textContent = line + 'CRITICAL MISS. You recover 2 less AP at the start of your next turn.'; const own = findChar(mc.id); if (own) { own.vitals = Object.assign({}, own.vitals, { apPenalty: 2 }); queueSave(own); } return; }
-        if (!(total > da)) { out.textContent = line + 'MISS.'; return; }
-        if (!pw) { out.textContent = line + 'HIT, but this weapon\'s Attack Dmg ("' + (a.power || '') + '") is not a formula the app can work out. Apply the damage by hand.'; return; }
+        if (kind === 'critfail') { showRoll(out, 'CRITICAL MISS', line + 'CRITICAL MISS. You recover 2 less AP at the start of your next turn.'); const own = findChar(mc.id); if (own) { own.vitals = Object.assign({}, own.vitals, { apPenalty: 2 }); queueSave(own); } return; }
+        if (!(total > da)) { showRoll(out, 'MISS', line + 'MISS.'); return; }
+        if (!pw) { showRoll(out, 'HIT', line + 'HIT, but this weapon\'s Attack Dmg ("' + (a.power || '') + '") is not a formula the app can work out. Apply the damage by hand.'); return; }
         const dmg = BSH.COMBAT.damage(pw.total, ac, kind === 'crit');
         if (dmg > 0) await backend.dealDamage(mc.id, tr.ch.id, dmg);
         const before = tres.hpRemaining;
         if (dmg > 0) { tr.ch.vitals = tr.ch.vitals || {}; tr.ch.vitals.damage = r2((Number(tr.ch.vitals.damage) || 0) + dmg); }
-        out.textContent = line + (kind === 'crit' ? 'CRITICAL HIT. ' : 'HIT. ') + 'Attack Pwr ' + pw.text + ' = ' + fmt(pw.total) + ', minus AC ' + fmt(ac) + ' = ' + fmt(BSH.COMBAT.damage(pw.total, ac, false)) + (kind === 'crit' ? ', doubled = ' + fmt(dmg) : '') + ' damage. ' + tn + ' HP ' + fmt(before) + ' to ' + fmt(BSH.compute(tr.ch).hpRemaining) + '.';
+        showRoll(out, (kind === 'crit' ? 'CRITICAL HIT · ' : 'HIT · ') + fmt(dmg) + ' DAMAGE', line + (kind === 'crit' ? 'CRITICAL HIT. ' : 'HIT. ') + 'Attack Pwr ' + pw.text + ' = ' + fmt(pw.total) + ', minus AC ' + fmt(ac) + ' = ' + fmt(BSH.COMBAT.damage(pw.total, ac, false)) + (kind === 'crit' ? ', doubled = ' + fmt(dmg) : '') + ' damage. ' + tn + ' HP ' + fmt(before) + ' to ' + fmt(BSH.compute(tr.ch).hpRemaining) + '.');
         try { renderCampaignPage(); } catch (e) { /* page not open */ }
       } catch (e) { out.textContent = e.message; } finally { busy = false; }
     }
@@ -1606,11 +1654,12 @@
         const g0 = rr.groups[0], adj = g0.natural === 1 ? -5 : g0.natural === 20 ? 5 : 0, total = r2(mod + adj + g0.total), level = BSH.COMBO.level(total);
         const fname = f.ch.info.name || 'Unnamed character';
         const text = skill.value + (advNote ? ' (' + advNote + ')' : '') + ': ' + g0.text + (mod < 0 ? ' - ' : ' + ') + fmt(Math.abs(mod)) + (adj ? (adj < 0 ? ' - 5' : ' + 5') : '') + ' = ' + fmt(total);
+        await undoMark(mc, 'Combo Attack', [f.ch.id]);
         await backend.setCombo(mc.id, f.ch.id, skill.value, level, total, text);
         if (wantDream) await etSave(mc, etHeld(mc) - 1);
-        await performAction({ name: 'Combo Attack', cost: fmt(cost) + ' AP' });
+        await performAction({ name: 'Combo Attack', cost: fmt(cost) + ' AP' }, true);
         const b = BSH.COMBO.bonus(skill.value, BSH.COMBO.column(level));
-        out.textContent = text + (level ? '. Level reached: CL ' + level + (b ? ' (' + b.t + ')' : '') : '. Below CL 10: no bonus') + '. ' + fname + ' can make the Combo Attack on their turn; it ends when your next turn begins.';
+        showRoll(out, level ? 'CL ' + level : 'BELOW CL 10', text + (level ? '. Level reached: CL ' + level + (b ? ' (' + b.t + ')' : '') : '. Below CL 10: no bonus') + '. ' + fname + ' can make the Combo Attack on their turn; it ends when your next turn begins.');
         try { renderCampaignPage(); } catch (e) { /* page not open */ }
       } catch (e) { out.textContent = e.message; } finally { busy = false; }
     }
@@ -1672,6 +1721,7 @@
         const ga = rr.groups[0], adj = ga.natural === 1 ? -5 : ga.natural === 12 ? 5 : 0, sa = res.stat[SA_IX()], total = r2(sa + adj + ga.total);
         const pw = powerFrom(pp, res.stat, rr.groups.slice(1).map((x) => x.total));
         const text = 'Leader ' + (lc.info.name || '') + (advNote ? ' (' + advNote + ')' : '') + ': ' + ga.text + (adj ? (adj < 0 ? ' - 5' : ' + 5') : '') + ' + SA ' + fmt(sa) + ' = ' + fmt(total);
+        await undoMark(lc, 'Combo: ' + a.name, [at.target, at.attacker]);
         if (cost) { const ap = r2(vitalNow(lc, res, 'AP') - cost); await backend.setVital(lc.id, 'apRemaining', ap); lc.vitals = Object.assign({}, lc.vitals, { apRemaining: ap }); }
         if (a.weaponUid) await fireWeapon(lc, a.weaponUid);
         await backend.comboLeaderAttack(g.id, at.id, total, pw.total, text);
@@ -1720,12 +1770,37 @@
     }
   }
   function renderAndBack() { renderActionList(); showActionList(); }
+  // Undo Action: before an action, the server keeps a snapshot of the actor and anyone the action touches (the last two per character;
+  // END TURN clears them). A failed snapshot never stops the action itself.
+  async function undoMark(c, label, others) {
+    const g = c && state.campaigns.find((x) => x.id === c.campaignId);
+    if (!g || !g.encounter) return;
+    try { await backend.pushUndo(g.id, c.id, String(label || 'Action').slice(0, 80), (others || []).filter((x) => x && x !== c.id)); } catch (e) { /* Undo just won't offer this one */ }
+  }
+  const undoLabels = (g, id) => (g && g.encounter && g.encounter.undo && Array.isArray(g.encounter.undo[id]) ? g.encounter.undo[id] : []);
+  function undoButton(g, c) {
+    const labels = undoLabels(g, c.id);
+    if (!labels.length) return null;
+    const last = labels[labels.length - 1];
+    return confirmButton('UNDO: ' + String(last).toUpperCase(), 'TAP AGAIN TO UNDO', async () => {
+      try {
+        const done = await backend.undoAction(g.id, c.id);
+        setCampaignMsgs('Undone: ' + (done || last) + (labels.length > 1 ? '. One more action can still be undone.' : '.'));
+        await refreshChars();
+        await pollCampaigns(true);
+        const rows = await backend.listCampaignCharacters(g.id);
+        state.campChars = rows; state.campChars.forEach((r) => { r.ch = normalizeChar(r.ch); }); state.campCharsFor = g.id;
+        renderCampaignPage();
+      } catch (e) { setCampaignMsgs('Could not undo: ' + e.message); }
+    });
+  }
   // Spending: cost strings look like "3 AP" / "2 SP"; the matching "remaining" box on the sheet goes down by that amount
-  async function performAction(a) {
+  async function performAction(a, marked) {
     const c = actionCh(), m = /^(\d+(?:\.\d+)?)\s*(AP|SP)$/.exec(a.cost || '');
     if (!m || !actionEncounter()) return;
     const key = m[2], res = BSH.compute(c), now = vitalNow(c, res, key), amount = Number(m[1]) * (key === 'SP' && BSH.TOKENS.flags(tokenOf(c, 'bt')).spDouble ? 2 : 1);   // 20+ BT doubles SP costs
     if (now < amount) { actionFeedback = 'Not enough ' + key + ' for ' + a.name + ' (' + fmt(now) + ' left).'; renderActionList(); return; }
+    if (!marked) await undoMark(c, a.name, []);
     const next = r2(now - amount), field = key.toLowerCase() + 'Remaining';
     try {
       await backend.setVital(c.id, field, next);
@@ -1770,6 +1845,7 @@
     const res = BSH.compute(c), now = vitalNow(c, res, 'AP'), amount = Number(m[1]);
     if (now < amount) { actionFeedback = 'Not enough AP for ' + a.name + ' (' + fmt(now) + ' left).'; renderActionList(); return; }
     let r;
+    await undoMark(c, a.name, []);
     try { r = await backend.loadWeapon(c.id, a.weaponUid, r2(now - amount)); } catch (e) { actionFeedback = e.message; renderActionList(); return; }
     adoptItems(c.id, r.items, r.itemsEdit);
     [c, findChar(c.id), actionChar].forEach((x) => { if (x) x.vitals = Object.assign({}, x.vitals, { apRemaining: r2(now - amount) }); });

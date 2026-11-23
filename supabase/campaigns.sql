@@ -540,6 +540,7 @@ begin
     raise exception 'An encounter is already active.';
   end if;
   delete from public.encounter_events where campaign_id = p_campaign;
+  delete from public.encounter_undo where campaign_id = p_campaign;
   update public.campaigns
      set encounter = jsonb_build_object('id', gen_random_uuid(), 'startedAt', (extract(epoch from clock_timestamp()) * 1000)::bigint, 'round', 1, 'seq', 0, 'moved', false, 'initiatives', '{}'::jsonb)
    where id = p_campaign;
@@ -555,6 +556,7 @@ begin
     raise exception 'Only a QM can end an encounter.';
   end if;
   update public.campaigns set encounter = null where id = p_campaign;
+  delete from public.encounter_undo where campaign_id = p_campaign;
   update public.characters set data = jsonb_set(coalesce(data, '{}'::jsonb), '{vitals}', coalesce(data->'vitals', '{}'::jsonb) - 'nextCrit')
    where campaign_id = p_campaign and coalesce(data->'vitals', '{}'::jsonb) ? 'nextCrit';
   delete from public.encounter_events where campaign_id = p_campaign;
@@ -726,8 +728,9 @@ begin
     nxt := ord[idx + 1];
   end if;
   update public.campaigns
-     set encounter = (enc #- array['combos', nxt::text]) || jsonb_build_object('turn', nxt, 'round', rnd, 'moved', true, 'seq', coalesce((enc->>'seq')::int, 0) + 1)
+     set encounter = (enc #- array['combos', nxt::text] #- array['undo', cur::text]) || jsonb_build_object('turn', nxt, 'round', rnd, 'moved', true, 'seq', coalesce((enc->>'seq')::int, 0) + 1)
    where id = p_campaign;
+  delete from public.encounter_undo where campaign_id = p_campaign and actor = cur;   -- END TURN: that turn's actions can no longer be undone
 end;
 $$;
 
@@ -746,8 +749,9 @@ begin
     raise exception 'That character has not rolled initiative yet.';
   end if;
   update public.campaigns
-     set encounter = (enc #- array['combos', p_character::text]) || jsonb_build_object('turn', p_character, 'moved', true, 'seq', coalesce((enc->>'seq')::int, 0) + 1)
+     set encounter = (enc #- array['combos', p_character::text] #- array['undo', coalesce(enc->>'turn', '')]) || jsonb_build_object('turn', p_character, 'moved', true, 'seq', coalesce((enc->>'seq')::int, 0) + 1)
    where id = p_campaign;
+  delete from public.encounter_undo where campaign_id = p_campaign and actor::text = coalesce(enc->>'turn', '');   -- the turn that was taken away ends its Undo
 end;
 $$;
 
@@ -1846,3 +1850,138 @@ end;
 $$;
 revoke execute on function public.set_campaign_compendium(uuid, uuid) from public, anon;
 grant execute on function public.set_campaign_compendium(uuid, uuid) to authenticated;
+
+-- ===== Release 5 =====
+-- A QM sets any campaign character's current values (HP is stored as damage taken; null means full).
+create or replace function public.qm_set_vitals(p_campaign uuid, p_character uuid, p_vitals jsonb)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+declare
+  k text; v jsonb; patch jsonb := '{}'::jsonb;
+begin
+  if auth.uid() is null or not public.is_campaign_qm(p_campaign) then raise exception 'Only a QM can do that.'; end if;
+  if jsonb_typeof(p_vitals) is distinct from 'object' then raise exception 'That number is not valid.'; end if;
+  if not exists (select 1 from public.characters where id = p_character and campaign_id = p_campaign) then raise exception 'That character is not in this campaign.'; end if;
+  for k, v in select * from jsonb_each(p_vitals) loop
+    if k not in ('damage', 'apRemaining', 'spRemaining', 'epRemaining') then raise exception 'That cannot be changed this way.'; end if;
+    if jsonb_typeof(v) not in ('number', 'null') or (jsonb_typeof(v) = 'number' and ((v #>> '{}')::numeric < -100000 or (v #>> '{}')::numeric > 100000)) then
+      raise exception 'That number is not valid.';
+    end if;
+    patch := patch || jsonb_build_object(k, v);
+  end loop;
+  update public.characters
+     set data = jsonb_set(coalesce(data, '{}'::jsonb), '{vitals}', coalesce(data->'vitals', '{}'::jsonb) || patch)
+   where id = p_character;
+end;
+$$;
+revoke execute on function public.qm_set_vitals(uuid, uuid, jsonb) from public, anon;
+grant execute on function public.qm_set_vitals(uuid, uuid, jsonb) to authenticated;
+
+-- Undo Action. Before an action the acting device calls push_undo: the server snapshots the current values (vitals, Explode Tokens,
+-- weapons' loaded marks) of the actor and anyone the action touches, plus the encounter's attack / last attack / the actor's combo.
+-- undo_action puts the newest snapshot back. Each character keeps its last two; END TURN (advance_turn / assign_turn) and the
+-- encounter's end clear them. Snapshots sit in their own table with no read access (players must not see hidden NPCs' values);
+-- the encounter only carries the labels (encounter.undo = {actor: [label, ...]}) for the UNDO button.
+create table if not exists public.encounter_undo (
+  campaign_id uuid not null references public.campaigns(id) on delete cascade,
+  actor uuid not null references public.characters(id) on delete cascade,
+  entries jsonb not null default '[]'::jsonb,
+  primary key (campaign_id, actor)
+);
+alter table public.encounter_undo enable row level security;
+revoke all on public.encounter_undo from anon, authenticated;
+
+create or replace function public.can_act_for(p_campaign uuid, p_character uuid)
+returns boolean
+language sql stable security definer set search_path = public
+as $$ select exists (select 1 from public.characters where id = p_character and campaign_id = p_campaign
+                       and (owner = auth.uid() or public.is_campaign_qm(p_campaign))) $$;
+
+create or replace function public.push_undo(p_campaign uuid, p_actor uuid, p_label text, p_others uuid[])
+returns void
+language plpgsql security definer set search_path = public
+as $$
+declare
+  enc jsonb; ids uuid[]; snap jsonb; entry jsonb; list jsonb;
+begin
+  if auth.uid() is null then raise exception 'Sign in first.'; end if;
+  select encounter into enc from public.campaigns where id = p_campaign for update;
+  if not found or enc is null then raise exception 'There is no active encounter.'; end if;
+  if not public.can_act_for(p_campaign, p_actor) then raise exception 'You can only act for your own characters.'; end if;
+  ids := array(select distinct x from unnest(array[p_actor] || coalesce(p_others, '{}')) x where x is not null);
+  if array_length(ids, 1) > 6 then raise exception 'Too many characters.'; end if;
+  if (select count(*) from public.characters where id = any (ids) and campaign_id = p_campaign) <> array_length(ids, 1) then
+    raise exception 'That character is not in this campaign.';
+  end if;
+  select jsonb_object_agg(id::text, jsonb_build_object(
+           'vitals', coalesce(data->'vitals', '{}'::jsonb),
+           'et', coalesce(data->'info'->'explodeTokens', 'null'::jsonb),
+           'loaded', coalesce((select jsonb_object_agg(it->>'uid', coalesce(it->'loaded', 'false'::jsonb))
+                                 from jsonb_array_elements(case when jsonb_typeof(data->'items') = 'array' then data->'items' else '[]'::jsonb end) it
+                                where it ? 'uid'), '{}'::jsonb)))
+    into snap from public.characters where id = any (ids);
+  entry := jsonb_build_object('label', left(coalesce(p_label, 'Action'), 80), 'snap', snap,
+    'attack', coalesce(enc->'attack', 'null'::jsonb), 'lastAttack', coalesce(enc->'lastAttack', 'null'::jsonb),
+    'combo', coalesce(enc->'combos'->(p_actor::text), 'null'::jsonb));
+  select coalesce(entries, '[]'::jsonb) into list from public.encounter_undo where campaign_id = p_campaign and actor = p_actor;
+  list := coalesce(list, '[]'::jsonb) || jsonb_build_array(entry);
+  if jsonb_array_length(list) > 2 then list := list - 0; end if;   -- keep the last two
+  insert into public.encounter_undo (campaign_id, actor, entries) values (p_campaign, p_actor, list)
+    on conflict (campaign_id, actor) do update set entries = excluded.entries;
+  update public.campaigns
+     set encounter = jsonb_set(enc, '{undo}', coalesce(enc->'undo', '{}'::jsonb) ||
+           jsonb_build_object(p_actor::text, (select jsonb_agg(e->'label') from jsonb_array_elements(list) e)))
+   where id = p_campaign;
+end;
+$$;
+
+create or replace function public.undo_action(p_campaign uuid, p_actor uuid)
+returns text
+language plpgsql security definer set search_path = public
+as $$
+declare
+  enc jsonb; list jsonb; e jsonb; k text; s jsonb; n int;
+begin
+  if auth.uid() is null then raise exception 'Sign in first.'; end if;
+  select encounter into enc from public.campaigns where id = p_campaign for update;
+  if not found or enc is null then raise exception 'There is no active encounter.'; end if;
+  if not public.can_act_for(p_campaign, p_actor) then raise exception 'You can only undo your own actions.'; end if;
+  select entries into list from public.encounter_undo where campaign_id = p_campaign and actor = p_actor for update;
+  n := coalesce(jsonb_array_length(list), 0);
+  if n = 0 then raise exception 'Nothing to undo.'; end if;
+  e := list->(n - 1);
+  for k, s in select * from jsonb_each(e->'snap') loop
+    update public.characters c
+       set data = (
+         select case when jsonb_typeof(s->'et') = 'number' then jsonb_set(d2, '{info,explodeTokens}', s->'et') else d2 #- '{info,explodeTokens}' end
+           from (select case when jsonb_typeof(d1->'items') = 'array' then jsonb_set(d1, '{items}', coalesce((
+                    select jsonb_agg(case when it ? 'uid' and (s->'loaded') ? (it->>'uid') then it || jsonb_build_object('loaded', s->'loaded'->(it->>'uid')) else it end order by o)
+                      from jsonb_array_elements(d1->'items') with ordinality t(it, o)), '[]'::jsonb)) else d1 end as d2
+                   from (select jsonb_set(case when jsonb_typeof(c.data->'info') = 'object' then coalesce(c.data, '{}'::jsonb) else coalesce(c.data, '{}'::jsonb) || '{"info": {}}'::jsonb end,
+                                          '{vitals}', s->'vitals') as d1) a) b)
+     where c.id = k::uuid and c.campaign_id = p_campaign;
+  end loop;
+  -- the encounter: put back the attack (only if it is still this actor's or none), the last attack (if it was this actor's) and their combo
+  if enc->'attack' is null or enc->'attack'->>'attacker' = p_actor::text then
+    enc := case when jsonb_typeof(e->'attack') = 'object' then jsonb_set(enc, '{attack}', e->'attack') else enc - 'attack' end;
+  end if;
+  if enc->'lastAttack' is null or enc->'lastAttack'->>'attacker' = p_actor::text then
+    enc := case when jsonb_typeof(e->'lastAttack') = 'object' then jsonb_set(enc, '{lastAttack}', e->'lastAttack') else enc - 'lastAttack' end;
+  end if;
+  if jsonb_typeof(e->'combo') = 'object' then enc := jsonb_set(enc, '{combos}', coalesce(enc->'combos', '{}'::jsonb) || jsonb_build_object(p_actor::text, e->'combo'));
+  else enc := enc #- array['combos', p_actor::text]; end if;
+  list := list - (n - 1);
+  if jsonb_array_length(list) = 0 then
+    delete from public.encounter_undo where campaign_id = p_campaign and actor = p_actor;
+    enc := enc #- array['undo', p_actor::text];
+  else
+    update public.encounter_undo set entries = list where campaign_id = p_campaign and actor = p_actor;
+    enc := jsonb_set(enc, '{undo}', coalesce(enc->'undo', '{}'::jsonb) || jsonb_build_object(p_actor::text, (select jsonb_agg(x->'label') from jsonb_array_elements(list) x)));
+  end if;
+  update public.campaigns set encounter = enc where id = p_campaign;   -- seq is left alone: it marks turn starts
+  return e->>'label';
+end;
+$$;
+revoke execute on function public.push_undo(uuid, uuid, text, uuid[]), public.undo_action(uuid, uuid), public.can_act_for(uuid, uuid) from public, anon;
+grant execute on function public.push_undo(uuid, uuid, text, uuid[]), public.undo_action(uuid, uuid), public.can_act_for(uuid, uuid) to authenticated;

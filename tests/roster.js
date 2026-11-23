@@ -43,9 +43,12 @@ async function scenario(label, makeAs) {
     ok(await until(() => Number(vit(rowOf(S, 'Alpha'), 'HP').value) === hp0 + 3), P('roster healing +5'));
     ok(await until(async () => Math.abs(S.w.BSH.compute((await bS.listCharacters()).find((x) => x.id === alpha.id)).hpRemaining - (hp0 + 3)) < 0.01), P('saved to the sheet'));
     ev(vit(rowOf(S, 'Alpha'), 'HP'), '5'); await wait(300); }
-  // other player's character: read-only
+  // another player's character: the QM can change its values (version 5); a player only sees readouts (checked from Ava's side below)
   const g = rowOf(S, 'Gamma');
-  ok(!g.querySelector('input[data-vit]') && g.querySelectorAll('.vit').length === 4 && !g.querySelector('.vit button'), P("someone else's character: readouts but not editable"));
+  ok(g.querySelectorAll('input[data-vit]').length === 5 && !!g.querySelector('.vit button'), P("the QM gets value boxes and DMG/HEAL on another player's character"));
+  V.go('characters'); await wait(60); V.go('campaign-' + G); await wait(200);
+  const va = rowOf(V, 'Alpha');
+  ok(va && !va.querySelector('input[data-vit]') && va.querySelectorAll('.vit').length === 4 && !va.querySelector('.vit button'), P("a player sees someone else's character as readouts, not editable"));
   // Ava sees Sam's edit
     ok(await until(async () => { V.go('characters'); await wait(60); V.go('campaign-' + G); await wait(150); const r = rowOf(V, 'Alpha'); return r && /AP 1\/|AP\s*1/.test(r.querySelector('.vitals').textContent); }, 6000), P("Ava sees Alpha's AP"));
   // skill check popup

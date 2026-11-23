@@ -7,7 +7,8 @@ const isMobRow = (c) => !!(c && c.is_npc && c.data && c.data.info && (c.data.inf
 
 function createMock() {
   var mockOrder;
-  const db = { users: [], profiles: [], characters: [], compendiums: [], campaigns: [], members: [], gifts: [], events: [], maps: [], tokens: [], log: [], failSaves: false };
+  const db = { users: [], profiles: [], characters: [], compendiums: [], campaigns: [], members: [], gifts: [], events: [], maps: [], tokens: [], undo: {}, log: [], failSaves: false };
+  const dropUndo = (gid, actor) => { Object.keys(db.undo).forEach((k) => { if (k.startsWith(gid + ':') && (actor == null || k === gid + ':' + actor)) delete db.undo[k]; }); };   // END TURN / encounter end
   mockOrder = (g, rnd) => {
     const I = g.encounter.initiatives, R = rnd || g.encounter.round || 1, slots = {};
     db.characters.filter((c) => c.campaign_id === g.id && I[c.id]).forEach((c) => { slots[c.id] = I[c.id]; });
@@ -188,6 +189,57 @@ function createMock() {
         c.data = Object.assign({}, c.data, { info: Object.assign({}, (c.data || {}).info, { explodeTokens: body.p_value }) });
         return send(204);
       }
+      if (p === '/rest/v1/rpc/qm_set_vitals' || p === '/rest/v1/rpc/push_undo' || p === '/rest/v1/rpc/undo_action') {
+        if (!me) return send(401, { message: 'JWT required' });
+        const P = (message) => send(400, { code: 'P0001', message });
+        const g = db.campaigns.find((x) => x.id === body.p_campaign);
+        const qm = !!g && db.members.some((m) => m.campaign_id === g.id && m.user_id === me && m.role === 'qm');
+        if (p.endsWith('qm_set_vitals')) {
+          if (!qm) return P('Only a QM can do that.');
+          const t = db.characters.find((x) => x.id === body.p_character);
+          if (!t || t.campaign_id !== g.id) return P('That character is not in this campaign.');
+          const v = body.p_vitals; if (!v || typeof v !== 'object') return P('That number is not valid.');
+          for (const [k, x] of Object.entries(v)) {
+            if (!['damage', 'apRemaining', 'spRemaining', 'epRemaining'].includes(k)) return P('That cannot be changed this way.');
+            if (x !== null && (typeof x !== 'number' || x < -100000 || x > 100000)) return P('That number is not valid.');
+          }
+          t.data = Object.assign({}, t.data, { vitals: Object.assign({}, (t.data || {}).vitals, v) });
+          return send(204);
+        }
+        if (!g || !g.encounter) return P('There is no active encounter.');
+        const actor = db.characters.find((x) => x.id === body.p_actor);
+        const can = actor && actor.campaign_id === g.id && (actor.owner === me || qm);
+        const e = g.encounter;
+        if (p.endsWith('push_undo')) {
+          if (!can) return P('You can only act for your own characters.');
+          const ids = [...new Set([body.p_actor].concat(body.p_others || []).filter(Boolean))], snap = {};
+          for (const id of ids) {
+            const c = db.characters.find((x) => x.id === id); if (!c || c.campaign_id !== g.id) return P('That character is not in this campaign.');
+            const d = c.data || {}, loaded = {};
+            (Array.isArray(d.items) ? d.items : []).forEach((it) => { if (it && it.uid) loaded[it.uid] = !!it.loaded; });
+            snap[id] = { vitals: JSON.parse(JSON.stringify(d.vitals || {})), et: d.info && typeof d.info.explodeTokens === 'number' ? d.info.explodeTokens : null, loaded };
+          }
+          const key = g.id + ':' + body.p_actor;
+          const list = (db.undo[key] || []).concat([{ label: String(body.p_label || 'Action').slice(0, 80), snap, attack: e.attack || null, lastAttack: e.lastAttack || null, combo: (e.combos && e.combos[body.p_actor]) || null }]).slice(-2);
+          db.undo[key] = list; e.undo = Object.assign({}, e.undo, { [body.p_actor]: list.map((x) => x.label) });
+          return send(204);
+        }
+        if (!can) return P('You can only undo your own actions.');
+        const key = g.id + ':' + body.p_actor, list = db.undo[key] || [];
+        if (!list.length) return P('Nothing to undo.');
+        const ent = list.pop();
+        for (const [id, sn] of Object.entries(ent.snap)) {
+          const c = db.characters.find((x) => x.id === id); if (!c || c.campaign_id !== g.id) continue;
+          const info = Object.assign({}, (c.data || {}).info); if (typeof sn.et === 'number') info.explodeTokens = sn.et; else delete info.explodeTokens;
+          const items = Array.isArray((c.data || {}).items) ? c.data.items.map((it) => (it && it.uid && it.uid in sn.loaded ? Object.assign({}, it, { loaded: sn.loaded[it.uid] }) : it)) : (c.data || {}).items;
+          c.data = Object.assign({}, c.data, { vitals: sn.vitals, info }, items ? { items } : {});
+        }
+        if (!e.attack || e.attack.attacker === body.p_actor) { if (ent.attack) e.attack = ent.attack; else delete e.attack; }
+        if (!e.lastAttack || e.lastAttack.attacker === body.p_actor) { if (ent.lastAttack) e.lastAttack = ent.lastAttack; else delete e.lastAttack; }
+        e.combos = Object.assign({}, e.combos); if (ent.combo) e.combos[body.p_actor] = ent.combo; else delete e.combos[body.p_actor];
+        e.undo = Object.assign({}, e.undo); if (list.length) e.undo[body.p_actor] = list.map((x) => x.label); else delete e.undo[body.p_actor];
+        return send(200, ent.label);
+      }
       if (p === '/rest/v1/rpc/qm_deal_damage') {
         if (!me) return send(401, { message: 'JWT required' });
         const P = (message) => send(400, { code: 'P0001', message });
@@ -290,7 +342,7 @@ function createMock() {
           if (g.encounter) return P('An encounter is already active.');
           db.events = db.events.filter((e) => e.campaign_id !== g.id); db.tokens = db.tokens.filter((t) => t.campaign_id !== g.id);
           g.encounter = { id: crypto.randomUUID(), startedAt: Date.now(), round: 1, seq: 0, moved: false, initiatives: {} };
-          return send(204);
+          dropUndo(g.id, null); return send(204);
         }
         const orderOf = (rnd) => mockOrder(g, rnd);
         if (p.endsWith('advance_turn')) {
@@ -302,6 +354,7 @@ function createMock() {
           const idx = ord.indexOf(cur);
           if (idx < 0) g.encounter.turn = ord[0]; else if (idx >= ord.length - 1) { const rnd = (g.encounter.round || 1) + 1; g.encounter.round = rnd; g.encounter.turn = orderOf(rnd)[0] || cur; } else g.encounter.turn = ord[idx + 1];
           if (g.encounter.combos) { g.encounter.combos = Object.assign({}, g.encounter.combos); delete g.encounter.combos[g.encounter.turn]; }
+          if (g.encounter.undo) { g.encounter.undo = Object.assign({}, g.encounter.undo); delete g.encounter.undo[cur]; } dropUndo(g.id, cur);
           g.encounter.moved = true; g.encounter.seq = (g.encounter.seq || 0) + 1; return send(204);
         }
         if (p.endsWith('assign_turn')) {
@@ -309,9 +362,10 @@ function createMock() {
           if (!g.encounter) return P('There is no active encounter.');
           if (!orderOf().includes(body.p_character)) return P('That character has not rolled initiative yet.');
           if (g.encounter.combos) { g.encounter.combos = Object.assign({}, g.encounter.combos); delete g.encounter.combos[body.p_character]; }
+          const was = g.encounter.turn; if (was && g.encounter.undo) { g.encounter.undo = Object.assign({}, g.encounter.undo); delete g.encounter.undo[was]; } if (was) dropUndo(g.id, was);
           g.encounter.turn = body.p_character; g.encounter.moved = true; g.encounter.seq = (g.encounter.seq || 0) + 1; return send(204);
         }
-        if (p.endsWith('end_encounter')) { if (!qm) return P('Only a QM can end an encounter.'); g.encounter = null; db.characters.forEach((ch) => { if (ch.campaign_id === g.id && ((ch.data || {}).vitals || {}).nextCrit) { const v = Object.assign({}, ch.data.vitals); delete v.nextCrit; ch.data = Object.assign({}, ch.data, { vitals: v }); } }); db.events = db.events.filter((e) => e.campaign_id !== g.id); db.tokens = db.tokens.filter((t) => t.campaign_id !== g.id); return send(204); }
+        if (p.endsWith('end_encounter')) { if (!qm) return P('Only a QM can end an encounter.'); g.encounter = null; dropUndo(g.id, null); db.characters.forEach((ch) => { if (ch.campaign_id === g.id && ((ch.data || {}).vitals || {}).nextCrit) { const v = Object.assign({}, ch.data.vitals); delete v.nextCrit; ch.data = Object.assign({}, ch.data, { vitals: v }); } }); db.events = db.events.filter((e) => e.campaign_id !== g.id); db.tokens = db.tokens.filter((t) => t.campaign_id !== g.id); return send(204); }
         if (!Number.isInteger(body.p_die) || body.p_die < 1 || body.p_die > 20) return P('The d20 roll must be between 1 and 20.');
         if (!g || !g.encounter) return P('There is no active encounter.');
         const c = db.characters.find((x) => x.id === body.p_character);

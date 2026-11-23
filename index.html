@@ -259,6 +259,17 @@
   .acost { flex: 0 0 auto; min-width: 4.2rem; display: flex; align-items: center; justify-content: center; border: 2px solid var(--ink); color: var(--ink-text); padding: 0 .5rem; letter-spacing: .06em; }
   .skill-sel { width: 100%; }
   .skill-out { color: var(--ink-text); font-size: max(8px, calc(1rem + var(--fs))); line-height: 1.4; min-height: 1.4em; word-break: break-word; }
+  /* roll results: the outcome big and bright in a box (after half a second), the calculation larger underneath */
+  .skill-out:has(.roll-big) { border: 2px solid #ffb347; background: rgba(255, 179, 71, .10); border-radius: 6px; padding: .6rem .7rem; }
+  .skill-out .roll-big { display: block; color: #ffd27a; font-size: max(14px, calc(1.9rem + var(--fs))); font-weight: bold; line-height: 1.15; letter-spacing: .03em; margin-bottom: .35rem;
+    animation: rollIn .45s ease-out .5s both; }
+  .skill-out .calc { display: block; color: #f0c9b8; font-size: max(11px, calc(1.15rem + var(--fs))); line-height: 1.45; }
+  @keyframes rollIn { from { opacity: 0; transform: scale(.85); } to { opacity: 1; transform: none; } }
+  /* roster values that just changed */
+  .vit.vit-pending { outline: 1px dashed #ffb347; outline-offset: 2px; }
+  .vit.vit-changed { animation: vitFlash 1.4s ease-out; border-radius: 4px; }
+  @keyframes vitFlash { 0% { background: rgba(255, 179, 71, .55); color: #fff; } 100% { background: transparent; } }
+  @media (prefers-reduced-motion: reduce) { .skill-out .roll-big, .vit.vit-changed { animation: none; } }
   .tag.init { background: var(--ink-text); color: #000; border-color: var(--ink-text); }
   .tag { border: 2px solid var(--ink-text); color: var(--ink-text); font-size: max(8px, calc(.72rem + var(--fs))); letter-spacing: .08em; padding: .1rem .35rem; }
   .member .acts { display: flex; gap: .5rem; flex-wrap: wrap; }
@@ -266,6 +277,12 @@
 
   /* Character sheet */
   .sheet { width: min(100%, 680px); align-items: stretch; margin: 0 auto; }
+  /* QM tools beside the roster on wide screens; stacked below it on phones */
+  @media (min-width: 1000px) {
+    #screen-campaign.qm-wide { width: min(100%, 1180px); }
+    .camp-cols.qm { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: 1.2rem; align-items: start; }
+    .camp-cols.qm .camp-qm { position: sticky; top: .5rem; max-height: calc(100vh - 1rem); overflow-y: auto; }
+  }
   .sheet-title { font-size: max(8px, calc(1.3rem + var(--fs))); color: var(--ink-text); text-align: center; margin-bottom: 1rem; word-break: break-word; text-transform: uppercase; letter-spacing: .06em; }
   .save-status { font-size: max(8px, calc(.7rem + var(--fs))); text-align: center; opacity: .85; min-height: 1.2em; margin: -.6rem 0 .8rem; letter-spacing: .08em; text-transform: uppercase; }
   .tabs { display: flex; gap: .4rem; overflow-x: auto; padding-bottom: .6rem; margin-bottom: 1.2rem; scrollbar-width: thin; scrollbar-color: var(--ink) #000; }
@@ -638,15 +655,22 @@
     <div class="enc-box" id="spawnBanner"></div>
     <div class="enc-box" id="attackWait"></div>
     <div class="enc-box" id="comboBox"></div>
-    <div class="members" id="memberList"></div>
-    <h3 class="sec" id="campCharsHead" hidden>Characters</h3>
-    <p class="note" id="noCampChars" hidden>No characters linked to this campaign yet. Link one from its INFO tab.</p>
-    <div class="members" id="campChars"></div>
-    <div class="campaign-actions" id="npcActions"></div>
-    <div class="give-box" id="spawnBox"></div>
-    <div class="campaign-actions" id="mapActions"></div>
-    <h3 class="sec" id="giveHead" hidden>Give an item</h3>
-    <div class="give-box" id="giveBox"></div>
+    <div class="camp-cols" id="campCols">
+      <div class="camp-main">
+        <div class="members" id="memberList"></div>
+        <h3 class="sec" id="campCharsHead" hidden>Characters</h3>
+        <p class="note" id="noCampChars" hidden>No characters linked to this campaign yet. Link one from its INFO tab.</p>
+        <div class="members" id="campChars"></div>
+      </div>
+      <div class="camp-qm" id="campQmCol">
+        <h3 class="sec" id="qmColHead" hidden>QM tools</h3>
+        <div class="campaign-actions" id="npcActions"></div>
+        <div class="give-box" id="spawnBox"></div>
+        <div class="campaign-actions" id="mapActions"></div>
+        <h3 class="sec" id="giveHead" hidden>Give an item</h3>
+        <div class="give-box" id="giveBox"></div>
+      </div>
+    </div>
     <div class="campaign-actions" id="campaignActions"></div>
   </section>
 

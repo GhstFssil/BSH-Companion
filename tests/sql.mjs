@@ -774,4 +774,46 @@ ok((await as('sam', `select count(*)::int c from campaign_members where campaign
   await as('kim', `delete from campaigns where id=$1`, [M]);
   ok(!(await has(m2)) && !(await has(b1)), 'mobs: deleting the campaign deletes its mobs and bosses');
 }
+{ // Release 5: QM sets current values; Undo Action
+  const K = (await as('kim', `insert into campaigns (name) values ('Undo hall') returning id`)).rows[0].id;
+  for (const w of ['sam', 'ava']) await as(w, `insert into campaign_members (campaign_id,user_id,role) values ($1,$2,'member')`, [K, ids[w]]);
+  const s1 = uuid(), a1 = uuid(), hid = uuid();
+  await as('sam', `insert into characters (id, owner, data, campaign_id) values ($1,$2,'{"info":{"name":"S","explodeTokens":3},"items":[{"uid":"w1","name":"Bow","loaded":true}]}',$3)`, [s1, ids.sam, K]);
+  await as('ava', `insert into characters (id, owner, data, campaign_id) values ($1,$2,'{"info":{"name":"A"}}',$3)`, [a1, ids.ava, K]);
+  await as('kim', `select create_npc($1,$2,'{"info":{"name":"Hidden"},"vitals":{"damage":4}}'::jsonb)`, [K, hid]);
+  const V = async (id) => (await db.query(`select data from characters where id=$1`, [id])).rows[0].data;
+  ok(!(await as('kim', `select qm_set_vitals($1,$2,$3::jsonb)`, [K, a1, '{"damage":7,"apRemaining":2,"epRemaining":null}'])).error && (await V(a1)).vitals.damage === 7 && (await V(a1)).vitals.apRemaining === 2, 'qm vitals: a QM sets a player character\'s HP (damage) and AP');
+  ok(err(await as('sam', `select qm_set_vitals($1,$2,$3::jsonb)`, [K, a1, '{"damage":0}']), /Only a QM/), 'qm vitals: a player cannot');
+  ok(err(await as('kim', `select qm_set_vitals($1,$2,$3::jsonb)`, [K, a1, '{"bt":5}']), /cannot be changed/) && err(await as('kim', `select qm_set_vitals($1,$2,$3::jsonb)`, [K, a1, '{"damage":"x"}']), /not valid/), 'qm vitals: other keys and bad values refused');
+  ok(err(await as('sam', `select push_undo($1,$2,'Attack',$3)`, [K, s1, [a1]]), /no active encounter/), 'undo: only during an encounter');
+  await as('kim', `select start_encounter($1)`, [K]);
+  ok(err(await as('ava', `select push_undo($1,$2,'Attack',$3)`, [K, s1, [a1]]), /your own/), 'undo: cannot mark actions for someone else\'s character');
+  ok(!(await as('sam', `select push_undo($1,$2,'Rest',null)`, [K, s1])).error, 'undo: a player marks an action');
+  ok(!(await as('sam', `select push_undo($1,$2,'Attack',$3)`, [K, s1, [a1]])).error, 'undo: and another');
+  // the attack happens: AP spent, ET spent, bow fired, Ava hurt, the last attack recorded
+  await db.query(`update characters set data = jsonb_set(jsonb_set(jsonb_set(data,'{vitals}','{"apRemaining":1}'),'{info,explodeTokens}','1'),'{items,0,loaded}','false') where id=$1`, [s1]);
+  await db.query(`update characters set data = jsonb_set(data,'{vitals}', data->'vitals' || '{"damage":12,"wt":1}') where id=$1`, [a1]);
+  await db.query(`update campaigns set encounter = encounter || jsonb_build_object('lastAttack', jsonb_build_object('id','x','attacker',$2::text,'target',$3::text,'text','hit')) where id=$1`, [K, s1, a1]);
+  const e1 = (await as('ava', `select encounter from campaigns where id=$1`, [K])).rows[0].encounter;
+  ok(JSON.stringify(e1.undo[s1]) === '["Rest","Attack"]', 'undo: the encounter shows only the labels to members');
+  ok((await as('sam', `select * from encounter_undo`)).error || (await as('sam', `select * from encounter_undo`)).rows.length === 0, 'undo: players cannot read the snapshots');
+  ok((await as('ava', `select undo_action($1,$2) l`, [K, s1])).error && true, 'undo: someone else cannot undo it');
+  const u = await as('sam', `select undo_action($1,$2) l`, [K, s1]);
+  const sv = await V(s1), av = await V(a1), e2 = (await as('sam', `select encounter from campaigns where id=$1`, [K])).rows[0].encounter;
+  ok(!u.error && u.rows[0].l === 'Attack', 'undo: the newest action is undone first');
+  ok(sv.vitals.apRemaining === undefined && sv.info.explodeTokens === 3 && sv.items[0].loaded === true, 'undo: the actor\'s AP, Explode Tokens and loaded bow come back');
+  ok(av.vitals.damage === 7 && av.vitals.wt === undefined, 'undo: the target\'s HP and tokens come back (a finished attack)');
+  ok(!e2.lastAttack && JSON.stringify(e2.undo[s1]) === '["Rest"]', 'undo: the last-attack note goes and one undo is left');
+  ok(!(await as('kim', `select push_undo($1,$2,'NPC attack',$3)`, [K, hid, [a1]])).error, 'undo: a QM marks actions for an NPC');
+  for (const lb of ['A2', 'A3']) await as('sam', `select push_undo($1,$2,$3,null)`, [K, s1, lb]);
+  ok(JSON.stringify((await as('sam', `select encounter from campaigns where id=$1`, [K])).rows[0].encounter.undo[s1]) === '["A2","A3"]', 'undo: only the last two are kept');
+  await si('sam', s1, 20, 0, K); await si('ava', a1, 2, 0, K);
+  const t0 = (await as('sam', `select encounter->>'turn' t from campaigns where id=$1`, [K])).rows[0].t;
+  ok(t0 === s1 && !(await as('sam', `select advance_turn($1,$2)`, [K, s1])).error, 'undo: Sam ends their turn');
+  const e3 = (await as('sam', `select encounter from campaigns where id=$1`, [K])).rows[0].encounter;
+  ok(!e3.undo || !e3.undo[s1], 'undo: END TURN clears that character\'s undo');
+  ok(err(await as('sam', `select undo_action($1,$2)`, [K, s1]), /Nothing to undo/), 'undo: nothing left after END TURN');
+  await as('kim', `select end_encounter($1)`, [K]);
+  ok((await db.query(`select count(*)::int n from encounter_undo where campaign_id=$1`, [K])).rows[0].n === 0, 'undo: ending the encounter clears every snapshot');
+}
 console.log(fails ? `${fails} FAILED of ${n}` : `ALL ${n} PASSED`); process.exit(fails ? 1 : 0);

@@ -99,7 +99,11 @@ A campaign is your group. Whoever creates it is its **QM** (the game master role
 
 When the QM starts an encounter, a popup appears on everyone's device: **An Encounter Has Begun!** Roll initiative for each of your characters with **ROLL D20** (or type your own roll). The result adds your Initiative Bonus. A 1 takes off 5 and a 20 adds 5.
 
-**Turn order.** The roster re-sorts by initiative, highest first. A **>** arrow and highlight mark whose turn it is. The **ROUND** counter goes up each time the turn passes from the last character back to the first. When you finish, tap **END TURN**. (The QM uses **ADVANCE TURN**, which also works for NPCs.)
+**Turn order.** The roster re-sorts by initiative, highest first. A **>** arrow and highlight mark whose turn it is. The **ROUND** counter goes up each time the turn passes from the last character back to the first. When you finish, tap **END TURN**. (The QM uses **ADVANCE TURN**, which also works for NPCs, or the **END TURN** button on an NPC's roster row.)
+
+**Undo.** During an encounter, if you make a mistake, the roster row of your character shows **UNDO: &lt;action&gt;** (tap twice). It undoes your last action, and the one before it if you tap again: attacks (even after the target has taken the damage), combos, spends, loading, and rests. It puts back the AP, SP, EP, HP, tokens, Explode Tokens and loaded weapons of your character and of whoever the action touched. Once you tap **END TURN**, that turn's actions can no longer be undone. Undo puts values back to how they were just before the action, so anything else that happened to those characters in between is undone too. Ammo used by loading is not given back.
+
+**Seeing results.** A roll's outcome (HIT, MISS, a skill check's TOTAL and so on) appears after half a second, big and bright in a highlighted box, with the calculation in larger text underneath. Numbers on the roster that change keep their old value for half a second, then flash as the new one comes in.
 
 **Start of your turn.** You get back the AP you spent and gain some SP, automatically. The first turn of an encounter gets no recovery.
 
@@ -127,6 +131,10 @@ Your roll is a d12 plus your SA. A natural 1 gives -5 and a natural 12 gives +5.
 ## 6. For QMs
 
 Everything above, plus:
+
+**Layout.** On a wide screen (a computer or tablet held sideways) your QM tools sit in a column beside the roster; on a phone they come below it.
+
+**Changing anyone's values.** You get the HP, AP, SP and EP boxes and **DMG/HEAL** on every character's roster row, players' characters included, so you can fix a number for anyone.
 
 **Running a campaign**
 - **MAKE QM / REMOVE QM** on any member, and removing players. A campaign always keeps at least one QM: if the last one leaves, a random player takes over.

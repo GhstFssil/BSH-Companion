@@ -544,6 +544,21 @@
         const { error } = await sb.rpc('qm_deal_damage', { p_campaign: campaignId, p_target: targetId, p_amount: amount });
         if (error) throw friendly(error, 'Could not apply the damage.');
       },
+      // A QM sets a character's current values: { damage, apRemaining, spRemaining, epRemaining } (null = full)
+      async qmSetVitals(campaignId, characterId, vitals) {
+        const { error } = await sb.rpc('qm_set_vitals', { p_campaign: campaignId, p_character: characterId, p_vitals: vitals });
+        if (error) throw friendly(error, 'Could not change that value.');
+      },
+      // Undo Action: snapshot before an action; put the newest snapshot back
+      async pushUndo(campaignId, actorId, label, otherIds) {
+        const { error } = await sb.rpc('push_undo', { p_campaign: campaignId, p_actor: actorId, p_label: label, p_others: otherIds || [] });
+        if (error) throw friendly(error, 'Could not remember that action for Undo.');
+      },
+      async undoAction(campaignId, actorId) {
+        const { data, error } = await sb.rpc('undo_action', { p_campaign: campaignId, p_actor: actorId });
+        if (error) throw friendly(error, 'Could not undo that.');
+        return data;
+      },
 
       async startTurn(characterId, spGain, spMax, apMax) {
         const { data, error } = await sb.rpc('start_turn', { p_character: characterId, p_sp_gain: spGain, p_sp_max: spMax, p_ap_max: apMax == null ? null : apMax });
@@ -622,7 +637,7 @@
     }
 
     let uid = null;
-    const ACC = 'bsh.accounts', SES = 'bsh.session', GR = 'bsh.campaigns', COMP = 'bsh.compendiums', GIFTS = 'bsh.gifts', MAPS = 'bsh.maps', CH = (u) => 'bsh.chars.' + u;
+    const ACC = 'bsh.accounts', SES = 'bsh.session', UNDO = 'bsh.undo', GR = 'bsh.campaigns', COMP = 'bsh.compendiums', GIFTS = 'bsh.gifts', MAPS = 'bsh.maps', CH = (u) => 'bsh.chars.' + u;
     const pub = (a) => ({ id: a.email, email: a.email, name: a.name, username: a.username });
 
     return {
@@ -919,14 +934,14 @@
         if (!g || !isQmOf(g, uid)) throw fail('Only a QM can start an encounter.');
         if (g.encounter) throw fail('An encounter is already active.');
         g.encounter = { id: (env.crypto && env.crypto.randomUUID) ? env.crypto.randomUUID() : 'e' + Date.now() + Math.random().toString(16).slice(2), startedAt: Date.now(), round: 1, seq: 0, moved: false, initiatives: {} };
-        wr(GR, campaigns);
+        wr(GR, campaigns); localDropUndo(campaignId, null);
       },
 
       async endEncounter(campaignId) {
         const campaigns = rd(GR, []), g = campaigns.find((x) => x.id === campaignId);
         if (!g || !isQmOf(g, uid)) throw fail('Only a QM can end an encounter.');
         g.encounter = null;
-        wr(GR, campaigns);
+        wr(GR, campaigns); localDropUndo(campaignId, null);
         Object.keys(rd(ACC, {})).forEach((email) => {   // Next Hit Critical flags end with the encounter
           const list = rd(CH(email), []); let hit = false;
           list.forEach((c) => { if (c.campaignId === campaignId && c.vitals && c.vitals.nextCrit) { const v = Object.assign({}, c.vitals); delete v.nextCrit; c.vitals = v; hit = true; } });
@@ -1246,6 +1261,70 @@
         t.c.vitals = v;
         wr(CH(t.email), t.list);
       },
+      async qmSetVitals(campaignId, characterId, vitals) {
+        const g = rd(GR, []).find((x) => x.id === campaignId);
+        if (!g || !isQmOf(g, uid)) throw fail('Only a QM can do that.');
+        if (!vitals || typeof vitals !== 'object' || Array.isArray(vitals)) throw fail('That number is not valid.');
+        const t = localFind(characterId);
+        if (!t || t.c.campaignId !== campaignId) throw fail('That character is not in this campaign.');
+        const patch = {};
+        Object.keys(vitals).forEach((k) => {
+          if (!['damage', 'apRemaining', 'spRemaining', 'epRemaining'].includes(k)) throw fail('That cannot be changed this way.');
+          const v = vitals[k];
+          if (v !== null && (typeof v !== 'number' || !isFinite(v) || v < -100000 || v > 100000)) throw fail('That number is not valid.');
+          patch[k] = v;
+        });
+        t.c.vitals = Object.assign({}, t.c.vitals, patch);
+        wr(CH(t.email), t.list);
+      },
+      // Undo Action (same rules as push_undo / undo_action): snapshots live under UNDO, the encounter only shows the labels
+      async pushUndo(campaignId, actorId, label, otherIds) {
+        const campaigns = rd(GR, []), g = campaigns.find((x) => x.id === campaignId);
+        if (!g || !g.encounter) throw fail('There is no active encounter.');
+        const a = localFind(actorId);
+        if (!a || a.c.campaignId !== campaignId || (a.email !== uid && !isQmOf(g, uid))) throw fail('You can only act for your own characters.');
+        const ids = [...new Set([actorId].concat(otherIds || []).filter(Boolean))];
+        if (ids.length > 6) throw fail('Too many characters.');
+        const snap = {};
+        ids.forEach((id) => {
+          const f = localFind(id);
+          if (!f || f.c.campaignId !== campaignId) throw fail('That character is not in this campaign.');
+          const loaded = {};
+          (Array.isArray(f.c.items) ? f.c.items : []).forEach((it) => { if (it && it.uid) loaded[it.uid] = !!it.loaded; });
+          snap[id] = { vitals: JSON.parse(JSON.stringify(f.c.vitals || {})), et: f.c.info && typeof f.c.info.explodeTokens === 'number' ? f.c.info.explodeTokens : null, loaded };
+        });
+        const e = g.encounter, all = rd(UNDO, {}), mine = (all[campaignId] = all[campaignId] || {});
+        const list = (mine[actorId] || []).concat([{ label: String(label || 'Action').slice(0, 80), snap,
+          attack: e.attack || null, lastAttack: e.lastAttack || null, combo: (e.combos && e.combos[actorId]) || null }]).slice(-2);
+        mine[actorId] = list; wr(UNDO, all);
+        e.undo = Object.assign({}, e.undo, { [actorId]: list.map((x) => x.label) });
+        wr(GR, campaigns);
+      },
+      async undoAction(campaignId, actorId) {
+        const campaigns = rd(GR, []), g = campaigns.find((x) => x.id === campaignId);
+        if (!g || !g.encounter) throw fail('There is no active encounter.');
+        const a = localFind(actorId);
+        if (!a || a.c.campaignId !== campaignId || (a.email !== uid && !isQmOf(g, uid))) throw fail('You can only undo your own actions.');
+        const all = rd(UNDO, {}), list = (all[campaignId] || {})[actorId] || [];
+        if (!list.length) throw fail('Nothing to undo.');
+        const ent = list.pop();
+        Object.keys(ent.snap).forEach((id) => {
+          const f = localFind(id), sn = ent.snap[id];
+          if (!f || f.c.campaignId !== campaignId) return;
+          f.c.vitals = sn.vitals; f.c.info = Object.assign({}, f.c.info);
+          if (typeof sn.et === 'number') f.c.info.explodeTokens = sn.et; else delete f.c.info.explodeTokens;
+          (Array.isArray(f.c.items) ? f.c.items : []).forEach((it) => { if (it && it.uid && it.uid in sn.loaded) it.loaded = sn.loaded[it.uid]; });
+          wr(CH(f.email), f.list);
+        });
+        const e = g.encounter;
+        if (!e.attack || e.attack.attacker === actorId) { if (ent.attack) e.attack = ent.attack; else delete e.attack; }
+        if (!e.lastAttack || e.lastAttack.attacker === actorId) { if (ent.lastAttack) e.lastAttack = ent.lastAttack; else delete e.lastAttack; }
+        e.combos = Object.assign({}, e.combos); if (ent.combo) e.combos[actorId] = ent.combo; else delete e.combos[actorId];
+        e.undo = Object.assign({}, e.undo); if (list.length) e.undo[actorId] = list.map((x) => x.label); else delete e.undo[actorId];
+        all[campaignId][actorId] = list; wr(UNDO, all);
+        wr(GR, campaigns);
+        return ent.label;
+      },
 
       async startTurn(characterId, spGain, spMax, apMax) {
         const f = localFind(characterId);
@@ -1285,8 +1364,9 @@
         }
         else g.encounter.turn = ord[idx + 1];
         if (g.encounter.combos) delete g.encounter.combos[g.encounter.turn];   // a Leader's combo ends when their next turn begins
+        if (g.encounter.undo) delete g.encounter.undo[cur];                    // END TURN: that turn's actions can no longer be undone
         g.encounter.moved = true; g.encounter.seq = (g.encounter.seq || 0) + 1;
-        wr(GR, campaigns);
+        wr(GR, campaigns); localDropUndo(campaignId, cur);
       },
 
       async assignTurn(campaignId, characterId) {
@@ -1294,9 +1374,11 @@
         if (!g || !isQmOf(g, uid)) throw fail('Only a QM can assign a turn.');
         if (!g.encounter) throw fail('There is no active encounter.');
         if (!localOrder(g).includes(characterId)) throw fail('That character has not rolled initiative yet.');
+        const was = g.encounter.turn;
         g.encounter.turn = characterId; g.encounter.moved = true; g.encounter.seq = (g.encounter.seq || 0) + 1;
         if (g.encounter.combos) delete g.encounter.combos[characterId];
-        wr(GR, campaigns);
+        if (was && g.encounter.undo) delete g.encounter.undo[was];
+        wr(GR, campaigns); if (was) localDropUndo(campaignId, was);
       },
 
       /* ----- encounter maps (same rules as the database functions) ----- */
@@ -1507,6 +1589,12 @@
     // Leaving / removed: that player's characters in the campaign are unlinked. Campaign deleted (userId null): everyone's linked
     // characters are unlinked. NPCs stay with their owner, outside any campaign; mob and boss NPCs are deleted.
     // A mob or boss made from a compendium (or by the old MAKE MOBS): it is deleted, not kept, when it leaves its campaign
+    function localDropUndo(campaignId, actorId) {   // END TURN / the encounter's end (actorId null: everyone)
+      const all = rd(UNDO, {});
+      if (!all[campaignId]) return;
+      if (actorId == null) delete all[campaignId]; else delete all[campaignId][actorId];
+      wr(UNDO, all);
+    }
     function isMobNpc(c) { return !!(c && c.isNpc && c.info && (c.info.kind === 'mob' || c.info.kind === 'boss')); }
     function unlinkChars(campaignId, userId) {
       Object.keys(rd(ACC, {})).forEach((email) => {

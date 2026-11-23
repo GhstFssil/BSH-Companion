@@ -67,7 +67,7 @@ async function scenario(label, makeAs) {
   ok(rowsOf(V).map((r) => r.name).join() === 'Gamma', P('Ava only gets Gamma'));
 
   // ---- player rolls ----
-  const inp = (row) => row.el.querySelector('input');
+  const inp = (row) => row.el.querySelector('input[data-init]') || row.el.querySelector('input');
   S.setv(inp(sr[0]), '25'); S.click(btn(sr[0].el, 'SET ROLL')); await wait(80);
   ok(/between 1 and 20|1 to 20/.test(S.$('encMsg').textContent) && rowsOf(S)[0].done === null, P('an out-of-range die is refused'));
   S.setv(inp(sr[0]), 'x'); S.click(btn(sr[0].el, 'SET ROLL')); await wait(60);
@@ -111,7 +111,7 @@ async function scenario(label, makeAs) {
   ok(await waitFor(() => crows(R).find((x) => x.name === 'Gamma').qm, 3000), P('after 10 seconds the QM gets ROLL FOR THEM / SET ROLL for the player who has not answered'));
   ok(!crows(R).find((x) => x.name === 'Alpha').qm, P('...but not for a player who already rolled'));
   const gr = () => crows(R).find((x) => x.name === 'Gamma').el;
-  R.setv(gr().querySelector('input'), '20'); R.click(btn(gr(), 'SET ROLL'));
+  R.setv(gr().querySelector('input[data-init]'), '20'); R.click(btn(gr(), 'SET ROLL'));
   ok(await waitFor(() => initOf(R, 'Gamma') !== null), P('QM enters 20 for Gamma'));
   ok(initOf(R, 'Gamma') === 20 - 2 + 5, P('natural 20 adds 5: 20 - 2 + 5 = ' + initOf(R, 'Gamma')));
   ok(/set by the QM/.test(gr().textContent), P('marked as set by the QM'));
