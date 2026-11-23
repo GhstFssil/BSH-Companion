@@ -140,7 +140,7 @@ Not changed: a QM who steps down still passes their NPCs in that campaign to a Q
 - **Item row:** the line is chevron, name, hand marker, Qty; Charges and REMOVE moved into the opened item. The attack Name and Cost boxes are labelled.
 - **Database:** re-run `supabase/campaigns.sql` (new `is_mob_npc`; `unlink_npc`, the leave trigger and the campaign-delete trigger delete mob NPCs).
 
-## Running the table (version 5)
+## Running the table (also version 4)
 - **QM column:** on screens 1000px and wider the campaign page puts the QM tools (`#campQmCol`: NPC buttons, spawn, maps, Give an item) in a sticky column beside the roster (`.camp-cols.qm`); phones stack them.
 - **QM edits current values:** the QM's roster rows have the value boxes and DMG/HEAL for every character. A character the QM doesn't own goes through `qm_set_vitals(p_campaign, p_character, p_vitals)` (QM only; keys `damage`, `apRemaining`, `spRemaining`, `epRemaining`; number or null = full).
 - **QM ends an NPC's turn:** END TURN on the NPC's roster row while it is its turn (`advance_turn` already allowed QMs).

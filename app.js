@@ -166,7 +166,7 @@
   const authInputs = [loginUser, loginPass, createName, createUser, createEmail, createPass, forgotWho, resetPass, resetPass2];
 
   // The app's version. Changed only when Ricky says so (not automatically).
-  const APP_VERSION = '3';
+  const APP_VERSION = '4';
   $('appVersion').textContent = 'v' + APP_VERSION;
   let lastRoute = 'start', sheetBack = null;
 

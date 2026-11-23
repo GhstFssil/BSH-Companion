@@ -43,7 +43,7 @@ async function scenario(label, makeAs) {
     ok(await until(() => Number(vit(rowOf(S, 'Alpha'), 'HP').value) === hp0 + 3), P('roster healing +5'));
     ok(await until(async () => Math.abs(S.w.BSH.compute((await bS.listCharacters()).find((x) => x.id === alpha.id)).hpRemaining - (hp0 + 3)) < 0.01), P('saved to the sheet'));
     ev(vit(rowOf(S, 'Alpha'), 'HP'), '5'); await wait(300); }
-  // another player's character: the QM can change its values (version 5); a player only sees readouts (checked from Ava's side below)
+  // another player's character: the QM can change its values (version 4); a player only sees readouts (checked from Ava's side below)
   const g = rowOf(S, 'Gamma');
   ok(g.querySelectorAll('input[data-vit]').length === 5 && !!g.querySelector('.vit button'), P("the QM gets value boxes and DMG/HEAL on another player's character"));
   V.go('characters'); await wait(60); V.go('campaign-' + G); await wait(200);

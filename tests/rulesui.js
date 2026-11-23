@@ -4,7 +4,8 @@ const { ok, done } = checker();
   const w = await boot({}); const A = api(w);
   const hit = []; w.Element.prototype.scrollIntoView = function () { hit.push(this.id); };
   await wait(100);
-  ok(A.$('appVersion').textContent === 'v3', 'title page shows version v3: ' + A.$('appVersion').textContent);
+  const want = 'v' + /APP_VERSION = '([^']+)'/.exec(require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8'))[1];   // follows each bump
+  ok(A.$('appVersion').textContent === want, 'title page shows version ' + want + ': ' + A.$('appVersion').textContent);
   ok(!A.$('screen-start').hidden && !A.$('rulesBtn').hidden && A.$('rulesBtn').closest('#docBar') && !A.$('guideBtn').hidden, 'RULES and GUIDE (top bar) are on the title page when logged out');
   A.click(A.$('rulesBtn')); await wait(50);
   ok(!A.$('screen-rules').hidden && A.vis().join() === 'rules', 'RULES opens the rulebook');

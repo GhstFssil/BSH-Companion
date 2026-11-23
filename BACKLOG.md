@@ -3,8 +3,7 @@ Either of us adds items here (bugs, ideas, questions). Newest at the top of each
 Format: `- [ ] (who, YYYY-MM-DD) short description; where/how to reproduce`
 
 ## Release plan (agreed 2026-11-22)
-- Release 4, mobs and sheet cleanup (DB change): built on `next` 2026-11-23, not yet published.
-- Release 5, running the table (DB change): built on `next` 2026-11-23, not yet published.
+- Releases 4 and 5 (mobs and sheet cleanup; running the table): published together as version 4 on 2026-11-23.
 - Release 6+, rules automation: magic items track, then all-abilities track (blank descriptions first), with the wound-conditions idea.
 
 ## Bugs
@@ -19,5 +18,5 @@ _none logged yet_
 
 ## Watch (untested)
 - [ ] (Claude, 2026-11-23) Version 4 layout (item row with Qty at the right, Charges/REMOVE inside the item, drop Carried row, SAVE/EDIT buttons, labelled attack Cost) is tested in jsdom only, not seen in a real browser; check on a phone.
-- [ ] (Claude, 2026-11-23) Version 5 QM column, UNDO button, roll result box and value flashes are tested in jsdom only, not seen in a real browser.
+- [ ] (Claude, 2026-11-23) Version 4's QM column, UNDO button, roll result box and value flashes are tested in jsdom only, not seen in a real browser.
 - [ ] (Claude, 2026-11-23) Undo restores whole snapshots: anything else that happened to those characters in between is undone too, and ammo spent by Load is not given back.
