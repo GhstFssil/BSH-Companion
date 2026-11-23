@@ -1,5 +1,5 @@
 # Handoff
-Last updated 2026-11-22 (evening, after publishing version 3). Overwrite each time; keep under 40 lines. Change record: HISTORY.md (don't read unless asked).
+Last updated 2026-11-22 20:50 (backlog batched into releases; no code work started). Overwrite each time; keep under 40 lines. Change record: HISTORY.md (don't read unless asked).
 
 ## Goal
 BLOODSOUP HELL Companion: one PWA for Ricky's homemade tabletop RPG, with Supabase accounts, campaigns, encounters and NPCs.
@@ -16,6 +16,7 @@ BLOODSOUP HELL Companion: one PWA for Ricky's homemade tabletop RPG, with Supaba
 - Nothing mid-flight.
 
 ## Decisions
+- Ricky (2026-11-22, backlog review): mob variation lives on the compendium mob and applies automatically at spawn (no roll, no dialog setting); removing a spawned mob deletes it permanently; Undo reverses up to two actions, not after END TURN. Release plan is at the top of BACKLOG.md.
 - Ricky (2026-11-22): copies keep a link + UPDATE button (no live link); all QMs of a campaign use its compendium, only the owner edits; compendium also holds abilities, attacks, custom actions; GUIDE and NOTES everywhere beside RULES.
 - Assumptions Ricky has not reviewed:
   - Ranges are whole numbers 0-100, rolled evenly; rolled values never go below 0; a blank talent counts as 10.
@@ -25,12 +26,11 @@ BLOODSOUP HELL Companion: one PWA for Ricky's homemade tabletop RPG, with Supaba
   - Players can use their own compendiums on their own sheets. QMs still can't add abilities to players' sheets (items only, as before).
   - Any QM may switch the campaign to their own compendium or none. Limits: 5 MB, 500 items, 200 mobs, 300 of each other kind.
   - An imported compendium is new: copies made from the original don't link to it.
-- `main` now has a CNAME (bsh-companion.theunassumingtavern.dev) added by Ricky.
 - Earlier unreviewed assumptions (loading, combos, tokens, codex, mobs) are unchanged; see the version 2 notes in README and the previous handoff in HISTORY.
 
 ## Next steps
 1. Confirm Ricky re-ran `campaigns.sql`; ask him to try compendiums (making a mob, ADD MOBS, GIVE ITEM, UPDATE) and the top bar on his phone; review the assumptions above.
-2. BACKLOG.md: Tracks (mechanics for all abilities) and the not-automated token details.
+2. When Ricky says go: Release 4 on `next` (see BACKLOG.md release plan), then 5, then rules automation. Wait for his go-ahead; no whiteboard.
 
 ## Gotchas
 - Tests that use weapon attacks must put the weapon in a hand (`eqR: true`).
